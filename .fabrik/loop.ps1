@@ -56,7 +56,7 @@ while ($true) {
     # If in building mode, verify there are tasks to work on
     if ($Mode -eq "build") {
         if ($OpenTasks.Count -eq 0) {
-            Write-Host "🎉 No remaining open tasks. Work complete!" -ForegroundColor Green
+            Write-Host "[DONE] No remaining open tasks. Work complete!" -ForegroundColor Green
             # Update state file to finished
             $EndTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             $EndStateText = @(
@@ -90,7 +90,7 @@ while ($true) {
     # Update terminal screen dashboard
     Clear-Host
     Write-Host "====================================================" -ForegroundColor Cyan
-    Write-Host "🏭 FABRIK DASHBOARD (Iteration: $($Iteration + 1))" -ForegroundColor Cyan
+    Write-Host "[FABRIK] DASHBOARD (Iteration: $($Iteration + 1))" -ForegroundColor Cyan
     Write-Host "====================================================" -ForegroundColor Cyan
     Write-Host "Mode:         $Mode" -ForegroundColor Gray
     Write-Host "Branch:       $Branch" -ForegroundColor Gray
@@ -103,7 +103,7 @@ while ($true) {
 
     # Update the live state file (Using string concat to prevent backtick-escaping errors)
     $RunStateText = @(
-        "# Fabrik Loop Status: RUNNING 🔄",
+        "# Fabrik Loop Status: RUNNING [~]",
         "",
         "*   **Last Update:** " + $CycleStart.ToString("yyyy-MM-dd HH:mm:ss"),
         "*   **Iteration:** " + ($Iteration + 1),
@@ -140,7 +140,7 @@ while ($true) {
     $HasLogHeader = $false
     foreach ($Line in $StateContent) {
         if ($Line.StartsWith("# Fabrik Loop Status:")) {
-            $NewState += "# Fabrik Loop Status: SLEEP / SYNCING 😴"
+            $NewState += "# Fabrik Loop Status: SLEEP / SYNCING [zZz]"
         }
         elseif ($Line.StartsWith("*   **Status:**")) {
             $NewState += '*   **Status:** `Waiting for next iteration (Last cycle took ' + $DurationStr + ')`'

@@ -31,7 +31,7 @@ foreach ($Item in $RequiredSetupItems) {
 
 if ($SetupIncomplete) {
     Clear-Host
-    Write-Host "⚠️ Fabrik setup is incomplete or has not been run in this directory." -ForegroundColor Red
+    Write-Host "[WARNING] Fabrik setup is incomplete or has not been run in this directory." -ForegroundColor Red
     Write-Host "Please execute the setup script to initialize the framework and skills:" -ForegroundColor Yellow
     Write-Host "    .\.fabrik\setup.ps1" -ForegroundColor Yellow
     Write-Host ""
@@ -39,7 +39,7 @@ if ($SetupIncomplete) {
 }
 
 Clear-Host
-Write-Host "🏭 Starting the Fabrik Workflow..." -ForegroundColor Cyan
+Write-Host "[FABRIK] Starting the Fabrik Workflow..." -ForegroundColor Cyan
 
 # ----------------------------------------------------
 # Phase 1: Interactive Requirements Alignment

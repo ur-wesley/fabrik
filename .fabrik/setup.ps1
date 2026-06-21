@@ -2,7 +2,7 @@
 # Automates the setup of the Fabrik workflow framework.
 # Installs battle-tested skills for OpenCode and initializes directories.
 
-Write-Host "🏭 Initializing the Fabrik Method Setup..." -ForegroundColor Cyan
+Write-Host "[FABRIK] Initializing the Fabrik Method Setup..." -ForegroundColor Cyan
 
 # 1. Check Node.js / NPM dependency
 if (-not (Get-Command "node" -ErrorAction SilentlyContinue) -or -not (Get-Command "npx" -ErrorAction SilentlyContinue)) {
@@ -58,7 +58,7 @@ if (-not (Test-Path $ContextFile)) {
     $ContextContent | Out-File -FilePath $ContextFile -Encoding utf8
 }
 
-Write-Host "`n🎉 Setup Complete!" -ForegroundColor Green
+Write-Host "`n[DONE] Setup Complete!" -ForegroundColor Green
 Write-Host "Next steps:" -ForegroundColor Gray
 Write-Host "1. Set D:/projects/fabrik as your active workspace." -ForegroundColor Gray
 Write-Host "2. Trigger OpenCode and run: /setup-matt-pocock-skills" -ForegroundColor Gray
