@@ -1,7 +1,7 @@
-0a. Study .fabrik/docs/PRD.md to understand the requirements context.
+0a. Study docs/PRD.md or .fabrik/docs/PRD.md to understand the requirements context.
 0b. Study the task list under `.fabrik/.tasks/` and select the lowest-numbered open task file.
 0c. Study the relevant source files under src/* to find existing implementation patterns.
-0d. Study .fabrik/styleguide/* using parallel subagents to learn the project's coding standards and design principles.
+0d. Study .fabrik/styleguide/* or docs/styleguide/* using parallel subagents to learn the project's coding standards and design principles.
 
 1. Implement the selected task's requirements. Do not start work on other tasks.
 2. Validate your implementation:
