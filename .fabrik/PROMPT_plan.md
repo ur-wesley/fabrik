@@ -12,6 +12,8 @@
 4. Update docs/PRD.md or .fabrik/docs/PRD.md if you discover structural gaps or need to document technical decisions.
 
 CRITICAL INVARIANTS:
+*   YOU MUST ACTUALLY WRITE THE TASK `.md` FILES TO DISK USING YOUR FILE WRITING TOOLS. Do not just output them in the chat.
+*   NEVER ASK FOR PERMISSION OR PRESENT OPTIONS (e.g. "Pick path: A or B"). Make a decision autonomously and execute it. If you need to create a housekeeping task, just create it.
 *   If both docs/PRD.md and .fabrik/docs/PRD.md are missing, empty, or lack requirements, do NOT output conversational questions or exit silently. Instead, immediately write a single task file `.fabrik/.tasks/000-initialize-prd.md` explaining that a PRD must be defined before planning can run, and exit.
 *   Do NOT implement any feature code.
 *   Do NOT write anything to src/*.

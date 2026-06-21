@@ -115,9 +115,9 @@ while ($true) {
     ) -join [Environment]::NewLine
     $RunStateText | Out-File -FilePath $StateFile -Encoding utf8
 
-    # Run OpenCode CLI using the correct agent mode
+    # Run OpenCode CLI using the default agent (avoids read-only restrictions of 'plan' agent)
     $PromptText = Get-Content -Raw -Path $PromptFile
-    opencode run --agent $Mode $PromptText
+    opencode run $PromptText
 
     # Calculate runtime duration
     $CycleEnd = Get-Date
