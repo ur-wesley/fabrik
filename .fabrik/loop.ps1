@@ -107,7 +107,7 @@ while ($true) {
         "",
         "*   **Last Update:** " + $CycleStart.ToString("yyyy-MM-dd HH:mm:ss"),
         "*   **Iteration:** " + ($Iteration + 1),
-        "*   **Current Task:** `" + $NextTaskName + "`",
+        '*   **Current Task:** ' + $NextTaskName + '`',
         "*   **Description:** " + $NextTaskDesc,
         "*   **Cycle Started At:** " + $CycleStartStr,
         "*   **Pending Queue:** " + $OpenTasks.Count + " tasks",
@@ -131,7 +131,7 @@ while ($true) {
     Write-Host "Task complete! Duration: $DurationStr" -ForegroundColor Green
 
     # Log task completion in state file
-    $LogEntry = "*   [" + $CycleEnd.ToString("HH:mm:ss") + "] Completed `" + $NextTaskName + "` in " + $DurationStr
+    $LogEntry = '*   [' + $CycleEnd.ToString("HH:mm:ss") + '] Completed `' + $NextTaskName + '` in ' + $DurationStr
     if (-not (Test-Path $StateFile)) { "" | Out-File -FilePath $StateFile }
     $StateContent = Get-Content -Path $StateFile
     
