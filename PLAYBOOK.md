@@ -44,13 +44,13 @@ project-root/
 │   ├── setup.sh                    # Initial setup script (Bash)
 │   ├── loop.ps1                    # PowerShell loop runner (runs opencode)
 │   ├── loop.sh                     # Bash loop runner (runs opencode)
+│   ├── fabrik.ps1                  # Master Orchestrator (PowerShell)
+│   ├── fabrik.sh                   # Master Orchestrator (Bash)
 │   ├── PROMPT_plan.md              # Plan agent instructions
 │   ├── PROMPT_build.md             # Build agent instructions
 │   ├── AGENTS.md                   # Caveman rules and validation steps
 │   └── CONTEXT.md                  # Project dictionary & domain modeling
 ├── src/                            # Source code
-├── fabrik.ps1                      # Master Orchestrator (PowerShell)
-├── fabrik.sh                       # Master Orchestrator (Bash)
 ├── package.json
 └── tsconfig.json
 ```
@@ -60,8 +60,8 @@ project-root/
 ## 3. Back-to-Back Master Flow
 
 To run the entire pipeline autonomously with a single startup trigger, use the **Master Orchestrator**:
-*   **Windows (PowerShell):** `.\fabrik.ps1`
-*   **Linux/macOS:** `./fabrik.sh`
+*   **Windows (PowerShell):** `.\.fabrik\fabrik.ps1`
+*   **Linux/macOS:** `./.fabrik/fabrik.sh`
 
 ```mermaid
 sequenceDiagram
@@ -70,7 +70,7 @@ sequenceDiagram
     participant OpenCode TUI
     participant OpenCode Run
 
-    Developer->>Orchestrator: Run .\fabrik.ps1
+    Developer->>Orchestrator: Run .\.fabrik\fabrik.ps1
     Orchestrator->>OpenCode TUI: Launch Step 1 (Interactive TUI)
     Developer->>OpenCode TUI: run /grill-with-docs and /to-prd
     Developer->>OpenCode TUI: type /exit

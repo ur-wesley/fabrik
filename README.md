@@ -47,11 +47,11 @@ Trigger OpenCode in this directory and run the official setup skill:
 To execute the entire pipeline autonomously from a single command:
 *   **Windows (PowerShell):**
     ```powershell
-    .\fabrik.ps1
+    .\.fabrik\fabrik.ps1
     ```
 *   **Unix / Git Bash:**
     ```bash
-    ./fabrik.sh
+    ./.fabrik/fabrik.sh
     ```
 *This starts the TUI for alignment, then automatically switches to planning and building loop modes.*
 

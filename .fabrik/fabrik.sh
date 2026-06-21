@@ -3,11 +3,11 @@
 # Master Orchestrator for the Fabrik workflow.
 # Run this script to execute the entire workflow back-to-back:
 # Grill Session (Interactive) -> PRD-to-Issues (Auto) -> Build Loops (Auto)
-# Usage: ./fabrik.sh
+# Usage: ./.fabrik/fabrik.sh
 
-# Resolve directory paths relative to script
+# Resolve directory paths relative to script (.fabrik/)
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-FABRIK_DIR="${SCRIPT_DIR}/.fabrik"
+FABRIK_DIR="$SCRIPT_DIR"
 TASKS_DIR="${FABRIK_DIR}/.tasks"
 PLAN_PROMPT_FILE="${FABRIK_DIR}/PROMPT_plan.md"
 BUILD_PROMPT_FILE="${FABRIK_DIR}/PROMPT_build.md"

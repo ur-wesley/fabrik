@@ -2,10 +2,10 @@
 # Master Orchestrator for the Fabrik workflow.
 # Run this script to execute the entire workflow back-to-back:
 # Grill Session (Interactive) -> PRD-to-Issues (Auto) -> Build Loops (Auto)
-# Usage: .\fabrik.ps1
+# Usage: .\.fabrik\fabrik.ps1
 
-# Ensure paths relative to the script directory
-$FabrikDir = Join-Path $PSScriptRoot ".fabrik"
+# Ensure paths relative to the script directory (.fabrik/)
+$FabrikDir = $PSScriptRoot
 $TasksDir = Join-Path $FabrikDir ".tasks"
 $PlanPromptFile = Join-Path $FabrikDir "PROMPT_plan.md"
 $BuildPromptFile = Join-Path $FabrikDir "PROMPT_build.md"
