@@ -19,12 +19,12 @@ if (-not (Test-Path ".git")) {
 # 3. Create required directories
 Write-Host "Creating directory layout..." -ForegroundColor Gray
 $Dirs = @(
-    "ai",
-    "ai/.tasks",
-    "ai/.tasks/completed",
-    "ai/docs",
-    "ai/specs",
-    "ai/styleguide",
+    ".fabrik",
+    ".fabrik/.tasks",
+    ".fabrik/.tasks/completed",
+    ".fabrik/docs",
+    ".fabrik/specs",
+    ".fabrik/styleguide",
     "src"
 )
 foreach ($Dir in $Dirs) {
@@ -60,4 +60,4 @@ Write-Host "`n🎉 Setup Complete!" -ForegroundColor Green
 Write-Host "Next steps:" -ForegroundColor Gray
 Write-Host "1. Set D:/projects/fabrik as your active workspace." -ForegroundColor Gray
 Write-Host "2. Trigger OpenCode and run: /setup-matt-pocock-skills" -ForegroundColor Gray
-Write-Host "3. Start planning by running: .\ai\loop.ps1 -Mode plan" -ForegroundColor Gray
+Write-Host "3. Start planning by running: .\.fabrik\loop.ps1 -Mode plan" -ForegroundColor Gray

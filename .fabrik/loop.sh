@@ -1,14 +1,14 @@
 #!/bin/bash
 # loop.sh
 # Bash loop runner for the AI workflow loop using OpenCode.
-# Usage: ./ai/loop.sh [plan|build] [max_iterations]
+# Usage: ./.fabrik/loop.sh [plan|build] [max_iterations]
 
 MODE=${1:-"build"}
 MAX_ITERATIONS=${2:-0}
 ITERATION=0
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 
-# Resolve paths relative to script's directory (ai/)
+# Resolve paths relative to script's directory (.fabrik/)
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROMPT_FILE="${SCRIPT_DIR}/PROMPT_${MODE}.md"
 TASKS_DIR="${SCRIPT_DIR}/.tasks"
@@ -47,8 +47,12 @@ while true; do
 
     echo -e "\n[Iteration $((ITERATION + 1))] Starting OpenCode Session..."
 
-    # Run OpenCode CLI
-    cat "$PROMPT_FILE" | opencode --agent "$MODE"
+    # Read the prompt file contents into a variable
+    PROMPT_TEXT=$(cat "$PROMPT_FILE")
+
+    # Run OpenCode run command with prompt text passed as an argument
+    # (In run mode, OpenCode auto-approves all tool permissions by default)
+    opencode run --agent "$MODE" "$PROMPT_TEXT"
 
     # Push progress
     echo "Syncing remote repository..."
@@ -58,7 +62,7 @@ while true; do
 
     # Planning mode runs only once to generate tasks
     if [ "$MODE" = "plan" ]; then
-        echo "Planning phase complete. Start the build loop with: ./ai/loop.sh build"
+        echo "Planning phase complete. Start the build loop with: ./.fabrik/loop.sh build"
         break
     fi
 

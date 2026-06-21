@@ -1,6 +1,6 @@
 # loop.ps1
 # Native Windows PowerShell runner for the AI workflow loop using OpenCode.
-# Usage: .\ai\loop.ps1 -Mode "build" -MaxIterations 20
+# Usage: .\.fabrik\loop.ps1 -Mode "build" -MaxIterations 20
 
 param (
     [ValidateSet("plan", "build")]
@@ -9,7 +9,7 @@ param (
     [int]$MaxIterations = 0
 )
 
-# Resolve paths relative to the script's directory (ai/)
+# Resolve paths relative to the script's directory (.fabrik/)
 $PromptFile = Join-Path $PSScriptRoot "PROMPT_$Mode.md"
 $TasksDir = Join-Path $PSScriptRoot ".tasks"
 $CompletedDir = Join-Path $TasksDir "completed"
@@ -51,9 +51,12 @@ while ($true) {
 
     Write-Host "`n[Iteration $($Iteration + 1)] Starting OpenCode Session..." -ForegroundColor Green
     
-    # Run OpenCode CLI using the correct agent mode
-    # Pipes the prompt file contents directly into the agent
-    Get-Content $PromptFile | opencode --agent $Mode
+    # Read the prompt file text directly
+    $PromptText = Get-Content -Raw -Path $PromptFile
+
+    # Run OpenCode run command with the prompt text passed as an argument
+    # (In run mode, OpenCode auto-approves all tool permissions by default)
+    opencode run --agent $Mode $PromptText
 
     # Sync remote repository
     Write-Host "Syncing remote repository..." -ForegroundColor Gray
@@ -63,7 +66,7 @@ while ($true) {
     
     # If in plan mode, we only need 1 run to generate tasks
     if ($Mode -eq "plan") {
-        Write-Host "Planning phase complete. Start the build loop with: .\ai\loop.ps1 -Mode build" -ForegroundColor Green
+        Write-Host "Planning phase complete. Start the build loop with: .\.fabrik\loop.ps1 -Mode build" -ForegroundColor Green
         break
     }
 
