@@ -40,6 +40,8 @@ project-root/
 │   ├── specs/                      # High-level architecture / specs
 │   ├── styleguide/                 # Code standards directory
 │   │   └── STYLEGUIDE.md           # Modular coding & strict typing rules
+│   ├── setup.ps1                   # Initial setup script (PowerShell)
+│   ├── setup.sh                    # Initial setup script (Bash)
 │   ├── loop.ps1                    # PowerShell loop runner (runs opencode)
 │   ├── loop.sh                     # Bash loop runner (runs opencode)
 │   ├── PROMPT_plan.md              # Plan agent instructions
@@ -47,41 +49,61 @@ project-root/
 │   ├── AGENTS.md                   # Caveman rules and validation steps
 │   └── CONTEXT.md                  # Project dictionary & domain modeling
 ├── src/                            # Source code
+├── fabrik.ps1                      # Master Orchestrator (PowerShell)
+├── fabrik.sh                       # Master Orchestrator (Bash)
 ├── package.json
 └── tsconfig.json
 ```
 
 ---
 
-## 3. The 6-Step Workflow via `opencode`
+## 3. Back-to-Back Master Flow
+
+To run the entire pipeline autonomously with a single startup trigger, use the **Master Orchestrator**:
+*   **Windows (PowerShell):** `.\fabrik.ps1`
+*   **Linux/macOS:** `./fabrik.sh`
 
 ```mermaid
-graph TD
-    Step1[1. Grill Session /grill-with-docs] --> Step2[2. Generate .fabrik/docs/PRD.md]
-    Step2 --> Step3[3. Split PRD into .fabrik/.tasks/*.md]
-    Step3 --> Step4[4. Start loop.sh / loop.ps1 to pick task]
-    Step4 --> Step5[5. Implement & test backpressure]
-    Step5 -- Fail --> Step5
-    Step5 -- Pass --> Step6[6. Commit, close task, restart loop]
+sequenceDiagram
+    participant Developer
+    participant Orchestrator
+    participant OpenCode TUI
+    participant OpenCode Run
+
+    Developer->>Orchestrator: Run .\fabrik.ps1
+    Orchestrator->>OpenCode TUI: Launch Step 1 (Interactive TUI)
+    Developer->>OpenCode TUI: run /grill-with-docs and /to-prd
+    Developer->>OpenCode TUI: type /exit
+    OpenCode TUI-->>Orchestrator: Session Close
+    Orchestrator->>OpenCode Run: Launch Step 2 (Plan mode run)
+    OpenCode Run->>OpenCode Run: Parse PRD & Generate .tasks/*.md
+    OpenCode Run-->>Orchestrator: Planning Done
+    loop Until .tasks/ is empty
+        Orchestrator->>OpenCode Run: Launch Step 3 (Build mode run)
+        OpenCode Run->>OpenCode Run: Read lowest task, write code, run tests
+        OpenCode Run->>OpenCode Run: Archive completed task, git commit
+        OpenCode Run-->>Orchestrator: Task Done
+        Orchestrator->>Orchestrator: git push origin
+    end
+    Orchestrator-->>Developer: Print success (Finished)
 ```
 
-### Step 1: Grill & Align
-*   **Action:** Run OpenCode and trigger `/grill-with-docs`.
-*   **Result:** A refined scope and terminology saved to [CONTEXT.md](file:///D:/projects/fabrik/.fabrik/CONTEXT.md).
+---
 
-### Step 2: Generate the PRD
-*   **Action:** Trigger `/to-prd` in OpenCode to output requirements to [docs/PRD.md](file:///D:/projects/fabrik/.fabrik/docs/PRD.md).
+## 4. Optimal Terminal Environment Setup
 
-### Step 3: PRD-to-Issues (Scope Splitting)
-*   **Action:** Run OpenCode with the plan agent (`loop.ps1 -Mode plan` / `loop.sh plan`).
-*   **Result:** Decoupled vertical slice task files created inside `.fabrik/.tasks/`.
+For the best monitoring and iteration speed, we recommend using a split-terminal multiplexer (like VS Code Terminal Splits, Windows Terminal, or tmux) split into **three specific panes**:
 
-### Step 4: Automatic Work Loop
-*   **Action:** Start the work loop (`loop.ps1 -Mode build` / `loop.sh build`).
-*   **Objective:** The script boots OpenCode in build mode (`opencode --agent build`), which reads `.fabrik/.tasks/`, selects the lowest-numbered open task, and starts coding.
+### Pane 1: The Factory Floor (Master Loop)
+*   **Purpose:** Run `.\fabrik.ps1` or `./fabrik.sh` here.
+*   **Usage:** You start the loop, interact with the initial grill session, and then watch the streaming logs as the agent builds, tests, and commits.
+*   **Key Value:** Keeps you in control of the loop trajectory.
 
-### Step 5: Test & Lint Backpressure
-*   **Action:** OpenCode implements code under `src/` and runs your tests (defined in `.fabrik/AGENTS.md`). It self-corrects until tests are green.
+### Pane 2: The Control Room (Manual Code/Git Inspection)
+*   **Purpose:** Active codebase terminal.
+*   **Usage:** Used to run manual git checks, inspect diffs (`git diff`), examine logs, and make manual adjustments if the agent gets stuck on a complex pattern.
 
-### Step 6: Commit & Close Issue
-*   **Action:** OpenCode moves the task to `.fabrik/.tasks/completed/`, stages files, commits with `closes #[task]`, pushes, and exits. The loop immediately restarts with a fresh context.
+### Pane 3: Continuous Backpressure Monitor (Live Watcher)
+*   **Purpose:** An active, continuous watcher for tests and builds.
+*   **Usage:** Run your project's unit tests in watch mode here (e.g., `npm run test -- --watch` or `vitest`).
+*   **Key Value:** Gives you instantaneous visual feedback as the agent edits files in Pane 1, allowing you to catch regression errors before the agent completes its cycle.

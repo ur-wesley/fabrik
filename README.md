@@ -43,9 +43,21 @@ Trigger OpenCode in this directory and run the official setup skill:
 ```
 *(This will ask you for your preferred issue tracker and documentation preferences).*
 
+### 4. Run the Master Orchestrator (Back-to-Back Flow)
+To execute the entire pipeline autonomously from a single command:
+*   **Windows (PowerShell):**
+    ```powershell
+    .\fabrik.ps1
+    ```
+*   **Unix / Git Bash:**
+    ```bash
+    ./fabrik.sh
+    ```
+*This starts the TUI for alignment, then automatically switches to planning and building loop modes.*
+
 ---
 
-## 🛠️ The Workflow
+## 🛠️ The Manual/Step-by-Step Workflow
 
 ### Step 1: Grill & Align
 Open your chat session with OpenCode and run:
