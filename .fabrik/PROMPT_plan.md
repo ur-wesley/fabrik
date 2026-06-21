@@ -11,7 +11,8 @@
 3. If an existing task file is completed but not archived, move it to `.fabrik/.tasks/completed/`.
 4. Update .fabrik/docs/PRD.md if you discover structural gaps or need to document technical decisions.
 
-CRITICAL:
+CRITICAL INVARIANTS:
+*   If .fabrik/docs/PRD.md is missing, empty, or lacks requirements, do NOT output conversational questions or exit silently. Instead, immediately write a single task file `.fabrik/.tasks/000-initialize-prd.md` explaining that a PRD must be defined in `.fabrik/docs/PRD.md` before planning can run, and exit.
 *   Do NOT implement any feature code.
 *   Do NOT write anything to src/*.
 *   Do NOT run git commits for source code changes.
