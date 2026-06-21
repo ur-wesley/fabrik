@@ -28,14 +28,14 @@ $Branch = (git branch --show-current).Trim()
 if (-not (Test-Path $TasksDir)) { New-Item -ItemType Directory -Path $TasksDir | Out-Null }
 if (-not (Test-Path $CompletedDir)) { New-Item -ItemType Directory -Path $CompletedDir | Out-Null }
 
-# Clear/Initialize the live state file (Array-join method avoids CRLF here-string bugs)
+# Clear/Initialize the live state file
 $StartTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $StateText = @(
     "# Fabrik Loop Status: INITIALIZING",
     "",
-    "*   **Started At:** $StartTimeStr",
-    '*   **Mode:** `$Mode`',
-    '*   **Branch:** `$Branch`',
+    "*   **Started At:** " + $StartTimeStr,
+    "*   **Mode:** " + $Mode,
+    "*   **Branch:** " + $Branch,
     '*   **Status:** `Running Setup...`'
 ) -join [Environment]::NewLine
 $StateText | Out-File -FilePath $StateFile -Encoding utf8
@@ -62,7 +62,7 @@ while ($true) {
             $EndStateText = @(
                 "# Fabrik Loop Status: FINISHED / IDLE",
                 "",
-                "*   **Last Run Complete:** $EndTimeStr",
+                "*   **Last Run Complete:** " + $EndTimeStr,
                 "*   **Outcome:** All tasks executed successfully!",
                 '*   **Status:** `IDLE`'
             ) -join [Environment]::NewLine
@@ -101,16 +101,16 @@ while ($true) {
     Write-Host "====================================================" -ForegroundColor Cyan
     Write-Host "Status: Running OpenCode agent run..." -ForegroundColor DarkYellow
 
-    # Update the live state file
+    # Update the live state file (Using string concat to prevent backtick-escaping errors)
     $RunStateText = @(
         "# Fabrik Loop Status: RUNNING 🔄",
         "",
-        "*   **Last Update:** $($CycleStart.ToString('yyyy-MM-dd HH:mm:ss'))",
-        "*   **Iteration:** $($Iteration + 1)",
-        "*   **Current Task:** ``$NextTaskName``",
-        "*   **Description:** $NextTaskDesc",
-        "*   **Cycle Started At:** $CycleStartStr",
-        "*   **Pending Queue:** $($OpenTasks.Count) tasks",
+        "*   **Last Update:** " + $CycleStart.ToString("yyyy-MM-dd HH:mm:ss"),
+        "*   **Iteration:** " + ($Iteration + 1),
+        "*   **Current Task:** `" + $NextTaskName + "`",
+        "*   **Description:** " + $NextTaskDesc,
+        "*   **Cycle Started At:** " + $CycleStartStr,
+        "*   **Pending Queue:** " + $OpenTasks.Count + " tasks",
         '*   **Status:** `Active - Executing OpenCode Run`'
     ) -join [Environment]::NewLine
     $RunStateText | Out-File -FilePath $StateFile -Encoding utf8
@@ -131,7 +131,7 @@ while ($true) {
     Write-Host "Task complete! Duration: $DurationStr" -ForegroundColor Green
 
     # Log task completion in state file
-    $LogEntry = "*   [$($CycleEnd.ToString('HH:mm:ss'))] Completed `$NextTaskName` in $DurationStr"
+    $LogEntry = "*   [" + $CycleEnd.ToString("HH:mm:ss") + "] Completed `" + $NextTaskName + "` in " + $DurationStr
     if (-not (Test-Path $StateFile)) { "" | Out-File -FilePath $StateFile }
     $StateContent = Get-Content -Path $StateFile
     
@@ -143,7 +143,7 @@ while ($true) {
             $NewState += "# Fabrik Loop Status: SLEEP / SYNCING 😴"
         }
         elseif ($Line.StartsWith("*   **Status:**")) {
-            $NewState += "*   **Status:** `Waiting for next iteration (Last cycle took $DurationStr)`"
+            $NewState += '*   **Status:** `Waiting for next iteration (Last cycle took ' + $DurationStr + ')`'
         }
         else {
             $NewState += $Line
