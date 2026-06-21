@@ -42,19 +42,20 @@ npx -y skills@latest add mattpocock/skills --agent opencode
 # 5. Check if CONTEXT.md exists, if not create a default one
 $ContextFile = Join-Path $PSScriptRoot "CONTEXT.md"
 if (-not (Test-Path $ContextFile)) {
-# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
-@"
-# Project Context & Dictionary
-
-This document defines the domain terms and architecture rules for this project.
-
-## Domain Language
-*   **Term**: [Definition of specific project jargon to reduce agent verbosity]
-
-## Architecture Guidelines
-*   Standard imports should reference interfaces.
-*   Prefer deep modules over thin helper wrappers.
-"@ | Out-File -FilePath $ContextFile -Encoding utf8
+    # Using line-ending agnostic Array-Join instead of Here-Strings to avoid parser errors
+    $ContextContent = @(
+        "# Project Context & Dictionary",
+        "",
+        "This document defines the domain terms and architecture rules for this project.",
+        "",
+        "## Domain Language",
+        "*   **Term**: [Definition of specific project jargon to reduce agent verbosity]",
+        "",
+        "## Architecture Guidelines",
+        "*   Standard imports should reference interfaces.",
+        "*   Prefer deep modules over thin helper wrappers."
+    ) -join [Environment]::NewLine
+    $ContextContent | Out-File -FilePath $ContextFile -Encoding utf8
 }
 
 Write-Host "`n🎉 Setup Complete!" -ForegroundColor Green

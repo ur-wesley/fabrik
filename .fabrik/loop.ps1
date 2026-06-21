@@ -28,17 +28,17 @@ $Branch = (git branch --show-current).Trim()
 if (-not (Test-Path $TasksDir)) { New-Item -ItemType Directory -Path $TasksDir | Out-Null }
 if (-not (Test-Path $CompletedDir)) { New-Item -ItemType Directory -Path $CompletedDir | Out-Null }
 
-# Clear/Initialize the live state file
+# Clear/Initialize the live state file (Array-join method avoids CRLF here-string bugs)
 $StartTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
-@"
-# Fabrik Loop Status: INITIALIZING
-
-*   **Started At:** $StartTimeStr
-*   **Mode:** `$Mode`
-*   **Branch:** `$Branch`
-*   **Status:** `Running Setup...`
-"@ | Out-File -FilePath $StateFile -Encoding utf8
+$StateText = @(
+    "# Fabrik Loop Status: INITIALIZING",
+    "",
+    "*   **Started At:** $StartTimeStr",
+    '*   **Mode:** `$Mode`',
+    '*   **Branch:** `$Branch`',
+    '*   **Status:** `Running Setup...`'
+) -join [Environment]::NewLine
+$StateText | Out-File -FilePath $StateFile -Encoding utf8
 
 $Iteration = 0
 while ($true) {
@@ -59,14 +59,14 @@ while ($true) {
             Write-Host "🎉 No remaining open tasks. Work complete!" -ForegroundColor Green
             # Update state file to finished
             $EndTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
-@"
-# Fabrik Loop Status: FINISHED / IDLE
-
-*   **Last Run Complete:** $EndTimeStr
-*   **Outcome:** All tasks executed successfully!
-*   **Status:** `IDLE`
-"@ | Out-File -FilePath $StateFile -Encoding utf8
+            $EndStateText = @(
+                "# Fabrik Loop Status: FINISHED / IDLE",
+                "",
+                "*   **Last Run Complete:** $EndTimeStr",
+                "*   **Outcome:** All tasks executed successfully!",
+                '*   **Status:** `IDLE`'
+            ) -join [Environment]::NewLine
+            $EndStateText | Out-File -FilePath $StateFile -Encoding utf8
             break
         }
         $NextTask = $OpenTasks[0]
@@ -85,7 +85,7 @@ while ($true) {
     }
 
     $CycleStart = Get-Date
-    $CycleStartStr = $CycleStart.Format("HH:mm:ss")
+    $CycleStartStr = $CycleStart.ToString("HH:mm:ss")
 
     # Update terminal screen dashboard
     Clear-Host
@@ -102,18 +102,18 @@ while ($true) {
     Write-Host "Status: Running OpenCode agent run..." -ForegroundColor DarkYellow
 
     # Update the live state file
-# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
-@"
-# Fabrik Loop Status: RUNNING 🔄
-
-*   **Last Update:** $($CycleStart.Format("yyyy-MM-dd HH:mm:ss"))
-*   **Iteration:** $($Iteration + 1)
-*   **Current Task:** `$NextTaskName`
-*   **Description:** $NextTaskDesc
-*   **Cycle Started At:** $CycleStartStr
-*   **Pending Queue:** $($OpenTasks.Count) tasks
-*   **Status:** `Active - Executing OpenCode Run`
-"@ | Out-File -FilePath $StateFile -Encoding utf8
+    $RunStateText = @(
+        "# Fabrik Loop Status: RUNNING 🔄",
+        "",
+        "*   **Last Update:** $($CycleStart.ToString('yyyy-MM-dd HH:mm:ss'))",
+        "*   **Iteration:** $($Iteration + 1)",
+        "*   **Current Task:** ``$NextTaskName``",
+        "*   **Description:** $NextTaskDesc",
+        "*   **Cycle Started At:** $CycleStartStr",
+        "*   **Pending Queue:** $($OpenTasks.Count) tasks",
+        '*   **Status:** `Active - Executing OpenCode Run`'
+    ) -join [Environment]::NewLine
+    $RunStateText | Out-File -FilePath $StateFile -Encoding utf8
 
     # Run OpenCode CLI using the correct agent mode
     $PromptText = Get-Content -Raw -Path $PromptFile
@@ -131,7 +131,7 @@ while ($true) {
     Write-Host "Task complete! Duration: $DurationStr" -ForegroundColor Green
 
     # Log task completion in state file
-    $LogEntry = "*   [$($CycleEnd.Format("HH:mm:ss"))] Completed `$NextTaskName` in $DurationStr"
+    $LogEntry = "*   [$($CycleEnd.ToString('HH:mm:ss'))] Completed `$NextTaskName` in $DurationStr"
     if (-not (Test-Path $StateFile)) { "" | Out-File -FilePath $StateFile }
     $StateContent = Get-Content -Path $StateFile
     
