@@ -42,7 +42,8 @@ npx -y skills@latest add mattpocock/skills --agent opencode
 # 5. Check if CONTEXT.md exists, if not create a default one
 $ContextFile = Join-Path $PSScriptRoot "CONTEXT.md"
 if (-not (Test-Path $ContextFile)) {
-    @"
+# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
+@"
 # Project Context & Dictionary
 
 This document defines the domain terms and architecture rules for this project.

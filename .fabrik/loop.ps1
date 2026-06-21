@@ -30,6 +30,7 @@ if (-not (Test-Path $CompletedDir)) { New-Item -ItemType Directory -Path $Comple
 
 # Clear/Initialize the live state file
 $StartTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
 @"
 # Fabrik Loop Status: INITIALIZING
 
@@ -58,7 +59,8 @@ while ($true) {
             Write-Host "🎉 No remaining open tasks. Work complete!" -ForegroundColor Green
             # Update state file to finished
             $EndTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            @"
+# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
+@"
 # Fabrik Loop Status: FINISHED / IDLE
 
 *   **Last Run Complete:** $EndTimeStr
@@ -100,7 +102,8 @@ while ($true) {
     Write-Host "Status: Running OpenCode agent run..." -ForegroundColor DarkYellow
 
     # Update the live state file
-    @"
+# Note: Here-string closing delimiter MUST start at column 1 (no leading spaces)
+@"
 # Fabrik Loop Status: RUNNING 🔄
 
 *   **Last Update:** $($CycleStart.Format("yyyy-MM-dd HH:mm:ss"))
