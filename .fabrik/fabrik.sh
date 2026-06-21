@@ -7,6 +7,29 @@
 
 # Resolve directory paths relative to script
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+FABRIK_DIR="$SCRIPT_DIR"
+
+# ----------------------------------------------------
+# Setup Verification Check
+# ----------------------------------------------------
+SETUP_INCOMPLETE=false
+REQUIRED_ITEMS=(".tasks" "docs" "styleguide" "styleguide/STYLEGUIDE.md" "CONTEXT.md")
+
+for item in "${REQUIRED_ITEMS[@]}"; do
+    if [ ! -e "${FABRIK_DIR}/${item}" ]; then
+        SETUP_INCOMPLETE=true
+        break
+    fi
+done
+
+if [ "$SETUP_INCOMPLETE" = true ]; then
+    clear
+    echo -e "\033[31m⚠️ Fabrik setup is incomplete or has not been run in this directory.\033[0m"
+    echo -e "\033[33mPlease execute the setup script to initialize the framework and skills:\033[0m"
+    echo -e "\033[33m    ./.fabrik/setup.sh\033[0m"
+    echo ""
+    exit 1
+fi
 
 clear
 echo -e "\033[36m🏭 Starting the Fabrik Workflow...\033[0m"

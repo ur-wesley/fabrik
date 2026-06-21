@@ -4,6 +4,40 @@
 # Grill Session (Interactive) -> PRD-to-Issues (Auto) -> Build Loops (Auto)
 # Usage: .\.fabrik\fabrik.ps1
 
+# Ensure paths relative to the script directory (.fabrik/)
+$FabrikDir = $PSScriptRoot
+$TasksDir = Join-Path $FabrikDir ".tasks"
+$PlanPromptFile = Join-Path $FabrikDir "PROMPT_plan.md"
+$BuildPromptFile = Join-Path $FabrikDir "PROMPT_build.md"
+
+# ----------------------------------------------------
+# Setup Verification Check
+# ----------------------------------------------------
+$RequiredSetupItems = @(
+    ".tasks",
+    "docs",
+    "styleguide",
+    "styleguide/STYLEGUIDE.md",
+    "CONTEXT.md"
+)
+$SetupIncomplete = $false
+foreach ($Item in $RequiredSetupItems) {
+    $Path = Join-Path $FabrikDir $Item
+    if (-not (Test-Path $Path)) {
+        $SetupIncomplete = $true
+        break
+    }
+}
+
+if ($SetupIncomplete) {
+    Clear-Host
+    Write-Host "⚠️ Fabrik setup is incomplete or has not been run in this directory." -ForegroundColor Red
+    Write-Host "Please execute the setup script to initialize the framework and skills:" -ForegroundColor Yellow
+    Write-Host "    .\.fabrik\setup.ps1" -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
 Clear-Host
 Write-Host "🏭 Starting the Fabrik Workflow..." -ForegroundColor Cyan
 
