@@ -1,0 +1,30 @@
+{
+  "name": "fabrik-cli",
+  "version": "1.0.0",
+  "description": "Cross-platform CLI framework for AI workflows",
+  "main": "src/cli.ts",
+  "bin": {
+    "fabrik": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "build": "bun build ./src/cli.ts --compile --outfile fabrik",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src",
+    "lint:fix": "biome lint --write src && biome format --write src",
+    "format": "biome format --write src"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.6.0",
+    "@ur-wesley/ts-prelude": "latest",
+    "commander": "^15.0.0",
+    "valibot": "^1.4.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
+    "@types/bun": "latest",
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0"
+  }
+}
