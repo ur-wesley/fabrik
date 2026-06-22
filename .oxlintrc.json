@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "style": "warn",
+    "restriction": "warn"
+  },
+  "rules": {
+    "no-unused-vars": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "warn",
+    "no-console": [
+      "warn",
+      { "allow": ["warn", "error"] }
+    ],
+    "typescript/consistent-type-imports": "error",
+    "import/first": "error"
+  },
+  "env": {
+    "builtin": true
+  }
+}
