@@ -11,9 +11,10 @@
     "build": "bun build ./src/cli.ts --compile --outfile fabrik",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "biome lint src",
-    "lint:fix": "biome lint --write src && biome format --write src",
-    "format": "biome format --write src"
+    "lint": "bunx oxlint src",
+    "lint:fix": "bunx oxlint --fix src && bunx oxfmt src",
+    "format": "bunx oxfmt src",
+    "postinstall": "node scripts/ensure-bunx-shim.cjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.6.0",
@@ -22,7 +23,6 @@
     "valibot": "^1.4.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
     "@types/bun": "latest",
     "oxfmt": "^0.55.0",
     "oxlint": "^1.70.0"
