@@ -18,6 +18,5 @@ Before marking a task as done, you must execute these commands to verify your ch
 ### 📦 Git & Issue State Management
 1.  When a task under `.fabrik/.tasks/` is completed and tests pass:
     *   Move the task file from `.fabrik/.tasks/` to `.fabrik/.tasks/completed/`.
-    *   Run `git add -A`.
-    *   Run `git commit -m "feat: [brief description] (closes #[issue_number])"`.
-2.  If the task is not completed, write your findings directly to the task file under a `## Discoveries / Obstacles` section so the next iteration can read them. Do not exit without committing if changes are partial.
+    *   Do NOT commit. The `.opencode/plugins/fabrik.ts` plugin owns commits — it batches every task in the current wave into a single `feat: ...` commit when the wave closes. Per-task commits are forbidden.
+2.  If the task is not completed, write your findings directly to the task file under a `## Discoveries / Obstacles` section so the next iteration can read them. Do not exit without archiving if changes are partial.

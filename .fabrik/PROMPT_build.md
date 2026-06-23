@@ -11,8 +11,7 @@
 3. If any check fails, debug the failures and re-run the tests. Do not proceed until tests are green.
 4. Once all validations pass:
    * Move the selected task file from `.fabrik/.tasks/` to `.fabrik/.tasks/completed/`.
-   * Stage all changes: `git add -A`.
-   * Commit with a message: `feat: implement [task-name] (closes #[task-number])`.
+   * Do NOT stage, do NOT commit. The `.opencode/plugins/fabrik.ts` plugin owns commits — it batches every task in the current wave into a single `feat: ...` commit when the wave closes.
    * Exit the session.
 
 CRITICAL INVARIANTS:
