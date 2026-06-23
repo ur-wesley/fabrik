@@ -50,6 +50,8 @@ while ($true) {
 
     # Fetch pending tasks
     $OpenTasks = Get-ChildItem -Path $TasksDir -Filter "*.md" -File | Sort-Object Name
+    $CompletedTasks = Get-ChildItem -Path $CompletedDir -Filter "*.md" -File
+    $TotalTasksCount = $OpenTasks.Count + $CompletedTasks.Count
     $NextTaskName = "None"
     $NextTaskDesc = "No description available."
 
@@ -89,8 +91,22 @@ while ($true) {
 
     # Update terminal screen dashboard
     Clear-Host
+    
+    $ProgressString = ""
+    if ($Mode -eq "build" -and $TotalTasksCount -gt 0) {
+        $PercentComplete = [math]::Round(($CompletedTasks.Count / $TotalTasksCount) * 100)
+        $BarLength = 20
+        $Filled = [math]::Round(($PercentComplete / 100) * $BarLength)
+        $Empty = $BarLength - $Filled
+        $Bar = ("#" * $Filled) + ("-" * $Empty)
+        $ProgressString = "[$Bar] $PercentComplete% ($($CompletedTasks.Count)/$TotalTasksCount Tasks)"
+    }
+
     Write-Host "====================================================" -ForegroundColor Cyan
     Write-Host "[FABRIK] DASHBOARD (Iteration: $($Iteration + 1))" -ForegroundColor Cyan
+    if ($ProgressString) {
+        Write-Host $ProgressString -ForegroundColor Green
+    }
     Write-Host "====================================================" -ForegroundColor Cyan
     Write-Host "Mode:         $Mode" -ForegroundColor Gray
     Write-Host "Branch:       $Branch" -ForegroundColor Gray

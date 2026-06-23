@@ -1,3 +1,8 @@
+param (
+    [switch]$Auto,
+    [string]$InitialPrompt
+)
+
 # fabrik.ps1
 # Master Orchestrator for the Fabrik workflow.
 # Run this script to execute the entire workflow back-to-back:
@@ -44,16 +49,30 @@ Write-Host "[FABRIK] Starting the Fabrik Workflow..." -ForegroundColor Cyan
 # ----------------------------------------------------
 # Phase 1: Interactive Requirements Alignment
 # ----------------------------------------------------
-Write-Host "`n====================================================" -ForegroundColor Gray
-Write-Host "Step 1: Interactive Alignment Session" -ForegroundColor Cyan
-Write-Host "====================================================" -ForegroundColor Gray
-Write-Host "1. Type /grill-with-docs to stress-test your plan." -ForegroundColor Gray
-Write-Host "2. Type /to-prd to write the requirements to docs/PRD.md or .fabrik/docs/PRD.md." -ForegroundColor Gray
-Write-Host "3. Type /exit to hand over control to the automated pipeline." -ForegroundColor Yellow
-Write-Host "Press enter when ready to launch the OpenCode TUI..."
-Read-Host
+if ($Auto) {
+    Write-Host "`n====================================================" -ForegroundColor Gray
+    Write-Host "Step 1: Automated Requirements Alignment" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Gray
+    
+    if ([string]::IsNullOrWhiteSpace($InitialPrompt)) {
+        $InitialPrompt = Read-Host "Please enter the initial prompt for PRD generation"
+    }
 
-opencode
+    Write-Host "Running Automated PRD Generation..." -ForegroundColor Yellow
+    $promptCmd = "You are an expert product manager. Generate a detailed PRD in docs/PRD.md based on these requirements: $InitialPrompt"
+    opencode run $promptCmd
+} else {
+    Write-Host "`n====================================================" -ForegroundColor Gray
+    Write-Host "Step 1: Interactive Alignment Session" -ForegroundColor Cyan
+    Write-Host "====================================================" -ForegroundColor Gray
+    Write-Host "1. Type /grill-with-docs to stress-test your plan." -ForegroundColor Gray
+    Write-Host "2. Type /to-prd to write the requirements to docs/PRD.md or .fabrik/docs/PRD.md." -ForegroundColor Gray
+    Write-Host "3. Type /exit to hand over control to the automated pipeline." -ForegroundColor Yellow
+    Write-Host "Press enter when ready to launch the OpenCode TUI..."
+    Read-Host
+
+    opencode
+}
 
 # ----------------------------------------------------
 # Phase 2: Automated Planning (PRD to Issues)

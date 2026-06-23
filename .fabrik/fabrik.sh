@@ -3,7 +3,18 @@
 # Master Orchestrator for the Fabrik workflow.
 # Run this script to execute the entire workflow back-to-back:
 # Grill Session (Interactive) -> PRD-to-Issues (Auto) -> Build Loops (Auto)
-# Usage: ./.fabrik/fabrik.sh
+# Usage: ./.fabrik/fabrik.sh [-a|--auto] [-p|--prompt "Prompt text"]
+
+AUTO=false
+INITIAL_PROMPT=""
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -a|--auto) AUTO=true; shift ;;
+        -p|--prompt) INITIAL_PROMPT="$2"; shift 2 ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+done
 
 # Resolve directory paths relative to script
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -37,15 +48,28 @@ echo -e "\033[36m🏭 Starting the Fabrik Workflow...\033[0m"
 # ----------------------------------------------------
 # Phase 1: Interactive Requirements Alignment
 # ----------------------------------------------------
-echo -e "\n\033[37m====================================================\033[0m"
-echo -e "\033[36mStep 1: Interactive Alignment Session\033[0m"
-echo -e "\033[37m====================================================\033[0m"
-echo "1. Type /grill-with-docs to stress-test your plan."
-echo "2. Type /to-prd to write the requirements to docs/PRD.md or .fabrik/docs/PRD.md."
-echo "3. Type /exit to hand over control to the automated pipeline."
-read -p "Press [Enter] when ready to launch the OpenCode TUI..."
+if [ "$AUTO" = true ]; then
+    echo -e "\n\033[37m====================================================\033[0m"
+    echo -e "\033[36mStep 1: Automated Requirements Alignment\033[0m"
+    echo -e "\033[37m====================================================\033[0m"
+    
+    if [ -z "$INITIAL_PROMPT" ]; then
+        read -p "Please enter the initial prompt for PRD generation: " INITIAL_PROMPT
+    fi
 
-opencode
+    echo -e "\033[33mRunning Automated PRD Generation...\033[0m"
+    opencode run "You are an expert product manager. Generate a detailed PRD in docs/PRD.md based on these requirements: $INITIAL_PROMPT"
+else
+    echo -e "\n\033[37m====================================================\033[0m"
+    echo -e "\033[36mStep 1: Interactive Alignment Session\033[0m"
+    echo -e "\033[37m====================================================\033[0m"
+    echo "1. Type /grill-with-docs to stress-test your plan."
+    echo "2. Type /to-prd to write the requirements to docs/PRD.md or .fabrik/docs/PRD.md."
+    echo "3. Type /exit to hand over control to the automated pipeline."
+    read -p "Press [Enter] when ready to launch the OpenCode TUI..."
+
+    opencode
+fi
 
 # ----------------------------------------------------
 # Phase 2: Automated Planning (PRD to Issues)

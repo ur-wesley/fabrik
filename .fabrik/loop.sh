@@ -45,8 +45,14 @@ while true; do
     NEXT_TASK_NAME="None"
     NEXT_TASK_DESC="No description available."
     
+    COMPLETED_TASKS=0
+    TOTAL_TASKS_COUNT=0
     if [ -d "$TASKS_DIR" ]; then
         OPEN_TASKS=$(find "$TASKS_DIR" -maxdepth 1 -name "*.md" | wc -l)
+        if [ -d "${TASKS_DIR}/completed" ]; then
+            COMPLETED_TASKS=$(find "${TASKS_DIR}/completed" -maxdepth 1 -name "*.md" | wc -l)
+        fi
+        TOTAL_TASKS_COUNT=$((OPEN_TASKS + COMPLETED_TASKS))
     fi
 
     # If in building mode, verify tasks exist
@@ -86,8 +92,23 @@ EOF
 
     # Update terminal screen dashboard
     clear
+    
+    PROGRESS_STRING=""
+    if [ "$MODE" = "build" ] && [ "$TOTAL_TASKS_COUNT" -gt 0 ]; then
+        PERCENT_COMPLETE=$(( (COMPLETED_TASKS * 100) / TOTAL_TASKS_COUNT ))
+        BAR_LENGTH=20
+        FILLED=$(( (PERCENT_COMPLETE * BAR_LENGTH) / 100 ))
+        EMPTY=$(( BAR_LENGTH - FILLED ))
+        BAR=$(printf "%${FILLED}s" | tr ' ' '#')
+        BAR="${BAR}$(printf "%${EMPTY}s" | tr ' ' '-')"
+        PROGRESS_STRING="[$BAR] $PERCENT_COMPLETE% ($COMPLETED_TASKS/$TOTAL_TASKS_COUNT Tasks)"
+    fi
+
     echo "===================================================="
     echo "🏭 FABRIK DASHBOARD (Iteration: $((ITERATION + 1)))"
+    if [ -n "$PROGRESS_STRING" ]; then
+        echo -e "\033[32m$PROGRESS_STRING\033[0m"
+    fi
     echo "===================================================="
     echo "Mode:         $MODE"
     echo "Branch:       $CURRENT_BRANCH"
