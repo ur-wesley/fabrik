@@ -1,92 +1,63 @@
-# Fabrik: The AI-Agent Engineering Framework
+# Fabrik — Native Pi Agent Extension Package 🚀
 
-**Fabrik** is a structured, test-driven development workflow designed to run AI coding agents (specifically **OpenCode**) in reliable, autonomous loops. 
+**Fabrik** is a native **Pi Agent Extension Package** ([pi.dev](https://pi.dev/)) designed for structured, test-driven, multi-task orchestration.
 
-It completely replaces conversational "vibe coding" with predictable software engineering cycles: **Grill → PRD → Decoupled Issues → Test-First Implementation → Auto-Commit Loop**.
-
----
-
-## 🚀 Quick Start
-
-### 📦 Add Fabrik to an Existing Project (One-Liner)
-Run this one-liner in your project's root directory to download and set up the `.fabrik/` folder:
-```bash
-npx degit ur-wesley/fabrik/.fabrik .fabrik
-```
-*Alternatively, using native Git:*
-```bash
-git clone --depth 1 --sparse https://github.com/ur-wesley/fabrik.git && cd fabrik && git sparse-checkout set .fabrik && mv .fabrik .. && cd .. && rm -rf fabrik
-```
-
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-*   [Node.js](https://nodejs.org/) (includes `npx`)
-*   [Git](https://git-scm.com/)
-*   **OpenCode CLI** (installed in your environment)
-
-### 2. Run Setup
-Initialize the directory structure and install the battle-tested community skills (like `/grill-with-docs`, `/to-prd`, `/to-issues`, and `/caveman`) from the `mattpocock/skills` repository.
-
-*   **Windows (PowerShell):**
-    ```powershell
-    .\.fabrik\setup.ps1
-    ```
-*   **Unix / Git Bash:**
-    ```bash
-    ./.fabrik/setup.sh
-    ```
-
-### 3. Initialize OpenCode Skills Configuration
-Trigger OpenCode in this directory and run the official setup skill:
-```bash
-/setup-matt-pocock-skills
-```
-*(This will ask you for your preferred issue tracker and documentation preferences).*
-
-### 4. Run the Master Orchestrator (Back-to-Back Flow)
-To execute the entire pipeline autonomously from a single command:
-*   **Windows (PowerShell):**
-    ```powershell
-    .\.fabrik\fabrik.ps1
-    ```
-*   **Unix / Git Bash:**
-    ```bash
-    ./.fabrik/fabrik.sh
-    ```
-*This starts the TUI for alignment, then automatically switches to planning and building loop modes.*
+It connects beste-in-class AI developer tools (**RTK** output token compression, **Engram** cross-session memory, **Ponytail** YAGNI rules, **mattpocock/skills**) into a single, low-token declarative YAML configuration (`.fabrik/config.yaml`).
 
 ---
 
-## 🛠️ The Manual/Step-by-Step Workflow
+## 📦 Installation & Setup
 
-### Step 1: Grill & Align
-Open your chat session with OpenCode and run:
+### 1. Install via Pi Package Manager
 ```bash
-/grill-with-docs
+pi install git:https://github.com/ur-wesley/fabrik.git
 ```
-The agent will interview you about your new feature or bug, checking requirements against your codebase and code guidelines. This refines your domain language and saves it in `.fabrik/CONTEXT.md`.
 
-### Step 2: Generate the PRD
-After aligning during the grilling session, run the PRD generator inside OpenCode:
+### 2. Or Test Directly in Current Session
 ```bash
-/to-prd
+pi -e ./index.ts
 ```
-This writes the requirements specification document directly to `.fabrik/docs/PRD.md`.
 
-### Step 3: Split PRD into Decoupled Tasks
-Run the planning agent to perform a gap analysis (specs vs. existing code) and partition the work into independent, non-overlapping task files in `.fabrik/.tasks/`:
-*   **Windows:** `.\.fabrik\loop.ps1 -Mode plan`
-*   **Linux/macOS:** `./.fabrik/loop.sh plan`
-
-### Step 4: Run the Build Loop (AFK Mode)
-Start the automated builder. It will load `opencode --agent build`, select the lowest-numbered open task file in `.fabrik/.tasks/`, implement it, verify the build/tests, move the task to `completed/`, commit and push, and restart with a clean context window:
-*   **Windows:** `.\.fabrik\loop.ps1 -Mode build`
-*   **Linux/macOS:** `./.fabrik/loop.sh build`
+*When starting `pi` inside a project containing `.pi/extensions/fabrik.ts`, Fabrik is automatically discovered and loaded.*
 
 ---
 
-## 📂 Core Reference Documentation
+## ⚡ Features & Slash Commands
 
-*   **[PLAYBOOK.md](PLAYBOOK.md)**: Human-facing workflow instructions and commands reference.
-*   **[.fabrik/styleguide/STYLEGUIDE.md](.fabrik/styleguide/STYLEGUIDE.md)**: Rules for strict, clean typing, deep modularity, and software design principles.
-*   **[.fabrik/AGENTS.md](.fabrik/AGENTS.md)**: System instruction file governing the agent's **Caveman** behaviour and testing backpressure.
+| Slash Command / Tool | Description |
+| :--- | :--- |
+| `/fabrik-init` | Bootstraps `.fabrik/config.yaml` and `.fabrik/.tasks/` in your repository |
+| `/fabrik-status` | Displays task counts (open, in-progress, completed), RTK status, and active model |
+| `/fabrik-plan` | Prompts Pi to partition PRD requirements into decoupled `.fabrik/.tasks/*.md` task files |
+| `fabrik_next_task` | Native LLM tool: Atomically claims and locks the next task into `.tasks/.in-progress/` |
+| `fabrik_complete_task` | Native LLM tool: Archives finished tasks to `.tasks/completed/` and creates auto-commits |
+
+---
+
+## 📑 Low-Token Declarative Configuration (`.fabrik/config.yaml`)
+
+```yaml
+agent: pi
+
+models:
+  default: anthropic/claude-3-5-sonnet
+  grill: anthropic/claude-3-5-sonnet
+  plan: openai/o3-mini
+  build: anthropic/claude-3-5-sonnet
+
+session:
+  auto_lock: true       # Prevents multi-session collisions on task files
+  auto_commit: true     # Automatically creates conventional git commits on task completion
+
+tools:
+  rtk: true            # Intercepts CLI outputs (test, git) to save 60-90% LLM tokens
+  engram: true         # Persistent cross-session memory layer
+
+skills:
+  - ponytail          # YAGNI & minimal code guidelines
+  - grill-with-docs   # Interactive alignment
+  - to-prd            # Specification generator
+  - to-issues         # Task partitioning
+  - tdd               # Test-driven development enforcement
+  - caveman           # Token-saving blunt response style
+```

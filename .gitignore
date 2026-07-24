@@ -1,0 +1,10 @@
+node_modules/
+.fabrik/
+dist/
+bun.lock
+*.d.ts
+.graphify/
+.graphify-out/
+fabrik
+fabrik.exe
+tsconfig.tsbuildinfo

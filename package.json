@@ -1,25 +1,26 @@
 {
-  "name": "fabrik-cli",
+  "name": "@ur-wesley/fabrik",
   "version": "1.0.0",
-  "description": "Cross-platform CLI framework for AI workflows",
-  "main": "src/cli.ts",
-  "bin": {
-    "fabrik": "./src/cli.ts"
-  },
+  "description": "Fabrik: Scoped session orchestrator, low-token YAML config, RTK token compression, and task workflow extension for Pi Agent (pi.dev)",
+  "main": "index.ts",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi.dev",
+    "ai-agent",
+    "workflow",
+    "rtk",
+    "engram"
+  ],
   "scripts": {
-    "start": "bun run src/cli.ts",
-    "build": "bun build ./src/cli.ts --compile --outfile fabrik",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "bunx oxlint src",
     "lint:fix": "bunx oxlint --fix src && bunx oxfmt src",
-    "format": "bunx oxfmt src",
-    "postinstall": "node scripts/ensure-bunx-shim.cjs"
+    "format": "bunx oxfmt src"
   },
   "dependencies": {
-    "@clack/prompts": "^1.6.0",
     "@ur-wesley/ts-prelude": "latest",
-    "commander": "^15.0.0",
     "valibot": "^1.4.1"
   },
   "devDependencies": {
@@ -28,3 +29,4 @@
     "oxlint": "^1.70.0"
   }
 }
+
