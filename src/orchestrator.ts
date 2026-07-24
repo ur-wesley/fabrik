@@ -26,13 +26,20 @@ export function resolveModel(
   mode: 'grill' | 'plan' | 'build',
   taskModel?: string,
 ): string | undefined {
-  const modelOpt: Option<string> = fromNullable(taskModel)
-    .filter((m) => m.length > 0)
-    .orElse(() => fromNullable(config.models?.[mode]))
-    .orElse(() => fromNullable(config.models?.default));
-
-  return getOrElse(modelOpt, undefined as unknown as string);
+  if (taskModel && taskModel.trim().length > 0) {
+    return taskModel.trim();
+  }
+  const modeModel = config.models?.[mode];
+  if (modeModel && modeModel.trim().length > 0) {
+    return modeModel.trim();
+  }
+  const defaultModel = config.models?.default;
+  if (defaultModel && defaultModel.trim().length > 0) {
+    return defaultModel.trim();
+  }
+  return undefined;
 }
+
 
 export function commitTask(cwd: string, taskName: string): boolean {
   const res = runCatching(() => {
