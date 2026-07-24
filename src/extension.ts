@@ -9,6 +9,8 @@ import { runCatching } from '@ur-wesley/ts-prelude/result';
 
 const log = logger.withTag('fabrik:extension');
 
+export const VERSION = '1.0.0';
+
 export default function fabrikExtension(pi: ExtensionAPI): void {
   const cwd = process.cwd();
 
@@ -16,7 +18,7 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
   if (pi.on) {
     pi.on('session_start', () => {
       const config = loadConfig(cwd);
-      log.info(`Fabrik Pi Extension initialized (Default model: ${config.models?.default ?? 'default'})`);
+      log.info(`Fabrik Pi Extension v${VERSION} initialized (Default model: ${config.models?.default ?? 'default'})`);
     });
   }
 
@@ -38,7 +40,7 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
         }
       });
 
-      const msg = 'Initialized .fabrik/config.yaml and task directory for Pi Agent.';
+      const msg = `Initialized .fabrik/config.yaml and task directory for Pi Agent (Fabrik v${VERSION}).`;
       log.success(msg);
       if (ctx.ui?.notify) {
         ctx.ui.notify(msg, 'success');
@@ -54,7 +56,7 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
       const status = getTaskStatus(cwd);
 
       const statusMsg =
-        `Fabrik Status (Pi Agent) | ` +
+        `Fabrik Status v${VERSION} (Pi Agent) | ` +
         `Open Tasks: ${status.openCount} | In Progress: ${status.inProgressCount} | Completed: ${status.completedCount} | ` +
         `RTK: ${config.tools?.rtk ? 'Enabled' : 'Disabled'} | Default Model: ${config.models?.default ?? 'Default'}`;
 
@@ -64,6 +66,7 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
       }
     },
   });
+
 
   // Command: /fabrik-plan
   pi.registerCommand('fabrik-plan', {
