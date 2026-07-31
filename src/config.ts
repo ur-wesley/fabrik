@@ -22,6 +22,8 @@ const SessionConfigSchema = v.object({
 const ToolsConfigSchema = v.object({
   rtk: v.optional(v.boolean(), true),
   engram: v.optional(v.boolean(), true),
+  caveman: v.optional(v.boolean(), true),
+  ponytail: v.optional(v.boolean(), true),
 });
 
 const FabrikConfigSchema = v.object({
@@ -30,12 +32,11 @@ const FabrikConfigSchema = v.object({
   session: v.optional(SessionConfigSchema, {}),
   tools: v.optional(ToolsConfigSchema, {}),
   skills: v.optional(v.array(v.string()), [
-    'ponytail',
-    'grill-with-docs',
-    'to-prd',
-    'to-issues',
-    'tdd',
     'caveman',
+    'mattpocock-planner',
+    'ponytail',
+    'rtk-usage',
+    'devin-fusion',
   ]),
 });
 
@@ -53,8 +54,10 @@ export const DEFAULT_CONFIG: FabrikConfig = {
   tools: {
     rtk: true,
     engram: true,
+    caveman: true,
+    ponytail: true,
   },
-  skills: ['ponytail', 'grill-with-docs', 'to-prd', 'to-issues', 'tdd', 'caveman'],
+  skills: ['caveman', 'mattpocock-planner', 'ponytail', 'rtk-usage', 'devin-fusion'],
 };
 
 export function loadConfig(cwd: string): FabrikConfig {

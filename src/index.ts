@@ -1,5 +1,6 @@
-export { default as fabrikPiExtension } from './extension/pi-extension';
+export { default as fabrikPiExtension } from './extension';
 export * from './config';
 export * from './orchestrator';
 export * from './yaml';
-export * from './agents';
+export * from './rtk';
+export * from './types';

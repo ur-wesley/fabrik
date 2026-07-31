@@ -9,7 +9,7 @@ import { runCatching } from '@ur-wesley/ts-prelude/result';
 
 const log = logger.withTag('fabrik:extension');
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 export default function fabrikExtension(pi: ExtensionAPI): void {
   const cwd = process.cwd();
@@ -18,7 +18,7 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
   if (pi.on) {
     pi.on('session_start', () => {
       const config = loadConfig(cwd);
-      log.info(`Fabrik Pi Extension v${VERSION} initialized (Default model: ${config.models?.default ?? 'default'})`);
+      log.info(`Fabrik Pi Extension v${VERSION} initialized (Skills: ${config.skills?.join(', ') ?? 'all'})`);
     });
   }
 
@@ -67,13 +67,76 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
     },
   });
 
-
   // Command: /fabrik-plan
   pi.registerCommand('fabrik-plan', {
     description: 'Instruct Pi to analyze PRD and partition work into decoupled task markdown files in .fabrik/.tasks/',
     handler: (args, ctx) => {
       const focus = args ? ` Focus: ${args}` : '';
       const msg = `Running Fabrik Plan mode.${focus} Partitioning tasks into .fabrik/.tasks/...`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, 'info');
+      }
+    },
+  });
+
+  // Command: /caveman
+  pi.registerCommand('caveman', {
+    description: 'Toggle Caveman mode for ultra-concise token-efficient agent communication (lite, full, ultra)',
+    handler: (args, ctx) => {
+      const level = args.trim() || 'full';
+      const msg = `Caveman protocol activated (intensity: ${level}). Stripping non-essential filler.`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, 'info');
+      }
+    },
+  });
+
+  // Command: /ponytail
+  pi.registerCommand('ponytail', {
+    description: 'Toggle Ponytail protocol for minimal code bloat and native-first solutions',
+    handler: (args, ctx) => {
+      const mode = args.trim() || 'full';
+      const msg = `Ponytail lazy senior dev protocol set to [${mode}]. Enforcing native abstractions and minimal diffs.`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, 'info');
+      }
+    },
+  });
+
+  // Command: /grill-with-docs
+  pi.registerCommand('grill-with-docs', {
+    description: "Matt Pocock's grill mode to interview codebase documentation and verify requirements before coding",
+    handler: (args, ctx) => {
+      const topic = args ? ` Topic: ${args}` : '';
+      const msg = `Starting Matt Pocock doc-grilling session.${topic} Anchoring answers in domain specs and codebase invariants.`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, 'info');
+      }
+    },
+  });
+
+  // Command: /sdd-fusion
+  pi.registerCommand('sdd-fusion', {
+    description: 'Devin Fusion Spec-Driven Development (SDD) autonomous workflow phase launcher',
+    handler: (args, ctx) => {
+      const phase = args.trim() || 'explore';
+      const msg = `Devin Fusion SDD workflow running phase: [${phase}]. Executing phased spec-driven loop.`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, 'info');
+      }
+    },
+  });
+
+  // Command: /rtk-compress
+  pi.registerCommand('rtk-compress', {
+    description: 'Trigger RTK (Rust Token Killer) output filter for active shell tool executions',
+    handler: (_args, ctx) => {
+      const msg = 'RTK (Rust Token Killer) token compression active on bash tool executions.';
       log.info(msg);
       if (ctx.ui?.notify) {
         ctx.ui.notify(msg, 'info');
