@@ -4,8 +4,7 @@ import { execSync } from 'child_process';
 import { loadConfig, type FabrikConfig } from './config';
 import { parseYaml } from './yaml';
 import { runCatching, matchResult } from '@ur-wesley/ts-prelude/result';
-import { fromNullable, map, getOrElse, type Option } from '@ur-wesley/ts-prelude/option';
-import { match } from '@ur-wesley/ts-prelude/match';
+import { fromNullable, map } from '@ur-wesley/ts-prelude/option';
 import { logger } from '@ur-wesley/ts-prelude/log';
 
 const log = logger.withTag('fabrik:orchestrator');
@@ -16,9 +15,8 @@ export function parseTaskFrontmatter(content: string): { model?: string } {
   if (endIdx === -1) return {};
   const frontmatterStr = content.slice(3, endIdx).trim();
   const parsed = parseYaml(frontmatterStr);
-  return {
-    model: typeof parsed.model === 'string' ? parsed.model : undefined,
-  };
+  const modelStr = typeof parsed.model === 'string' ? parsed.model : undefined;
+  return modelStr ? { model: modelStr } : {};
 }
 
 export function resolveModel(
@@ -39,7 +37,6 @@ export function resolveModel(
   }
   return undefined;
 }
-
 
 export function commitTask(cwd: string, taskName: string): boolean {
   const res = runCatching(() => {
@@ -91,13 +88,15 @@ export function getTaskStatus(cwd: string): TaskStatus {
     });
   }
 
-  return {
+  const result: TaskStatus = {
     openCount: openTasks.length,
     inProgressCount,
     completedCount,
-    nextTaskName: openTasks[0],
-    nextTaskModel,
   };
+  if (openTasks[0]) result.nextTaskName = openTasks[0];
+  if (nextTaskModel) result.nextTaskModel = nextTaskModel;
+
+  return result;
 }
 
 export function claimNextTask(cwd: string): {
@@ -135,12 +134,19 @@ export function claimNextTask(cwd: string): {
     err: () => log.warn(`Failed to acquire lock for ${taskName}, using direct file reference`),
   });
 
-  return {
+  const res: {
+    status: 'locked' | 'empty';
+    taskName?: string;
+    model?: string;
+    content?: string;
+  } = {
     status: 'locked',
     taskName,
-    model,
     content,
   };
+  if (model) res.model = model;
+
+  return res;
 }
 
 export function completeTask(

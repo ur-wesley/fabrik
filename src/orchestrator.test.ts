@@ -1,10 +1,11 @@
 import { describe, test, expect } from 'bun:test';
 import { resolveModel, parseTaskFrontmatter, getTaskStatus } from './orchestrator';
+import { DEFAULT_CONFIG, type FabrikConfig } from './config';
 
 describe('Orchestrator Functions', () => {
   test('resolveModel evaluates task model, mode model, and default model hierarchy', () => {
-    const config = {
-      agent: 'pi',
+    const config: FabrikConfig = {
+      ...DEFAULT_CONFIG,
       models: {
         default: 'anthropic/claude-3-5-sonnet',
         plan: 'openai/o3-mini',

@@ -1,6 +1,5 @@
 import { runCatching, matchResult } from '@ur-wesley/ts-prelude/result';
-import { fromNullable, getOrElse, map, type Option } from '@ur-wesley/ts-prelude/option';
-import { pipe } from '@ur-wesley/ts-prelude/pipe';
+import { fromNullable, map, type Option } from '@ur-wesley/ts-prelude/option';
 
 /**
  * Lightweight YAML parser and stringifier powered by @ur-wesley/ts-prelude
@@ -10,7 +9,7 @@ export function parseYaml(input: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   const lines = input.split(/\r?\n/);
 
-  let currentKey: Option<string> = fromNullable(null);
+  let currentKey: Option<string> = fromNullable(null as string | null);
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i]!;
