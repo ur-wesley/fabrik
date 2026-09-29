@@ -13,7 +13,9 @@
     "engram"
   ],
   "scripts": {
-    "test": "bun test",
+    "test": "bun test ./src",
+    "test:e2e": "bun test ./e2e/*.e2e.test.ts",
+    "test:all": "bun test ./src && bun test ./e2e/*.e2e.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "bunx oxlint src",
     "lint:fix": "bunx oxlint --fix src && bunx oxfmt src",

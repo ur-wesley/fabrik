@@ -25,5 +25,5 @@
       "bun-types"
     ]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "e2e/**/*"]
 }
