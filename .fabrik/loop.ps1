@@ -1,19 +1,10 @@
-# loop.ps1
-# Native Windows PowerShell runner for the AI workflow loop using OpenCode.
-# Includes real-time execution tracking, runtime timers, and a live state dashboard.
-# Usage: .\.fabrik\loop.ps1 -Mode "build" -MaxIterations 20
-
 param (
     [ValidateSet("plan", "build")]
     [string]$Mode = "build",
-
     [int]$MaxIterations = 0
 )
 
-# Resolve paths relative to the script's directory (.fabrik/)
 $FabrikDir = $PSScriptRoot
-$TasksDir = Join-Path $FabrikDir ".tasks"
-$CompletedDir = Join-Path $TasksDir "completed"
 $PromptFile = Join-Path $FabrikDir "PROMPT_$Mode.md"
 $StateFile = Join-Path $FabrikDir "state.md"
 
@@ -22,165 +13,73 @@ if (-not (Test-Path $PromptFile)) {
     exit 1
 }
 
-$Branch = (git branch --show-current).Trim()
+if (-not (Get-Command bd -ErrorAction SilentlyContinue)) {
+    Write-Error "bd not found. Run install/setup first."
+    exit 1
+}
 
-# Initialize task folders
-if (-not (Test-Path $TasksDir)) { New-Item -ItemType Directory -Path $TasksDir | Out-Null }
-if (-not (Test-Path $CompletedDir)) { New-Item -ItemType Directory -Path $CompletedDir | Out-Null }
+$Branch = (git branch --show-current 2>$null).Trim()
+if (-not $Branch) { $Branch = 'main' }
 
-# Clear/Initialize the live state file
 $StartTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$StateText = @(
-    "# Fabrik Loop Status: INITIALIZING",
-    "",
-    "*   **Started At:** " + $StartTimeStr,
-    "*   **Mode:** " + $Mode,
-    "*   **Branch:** " + $Branch,
-    '*   **Status:** `Running Setup...`'
-) -join [Environment]::NewLine
-$StateText | Out-File -FilePath $StateFile -Encoding utf8
+@"
+# Fabrik Loop Status: INITIALIZING
+
+*   **Started At:** $StartTimeStr
+*   **Mode:** $Mode
+*   **Branch:** $Branch
+*   **Status:** Running...
+"@ | Set-Content -LiteralPath $StateFile -Encoding utf8
 
 $Iteration = 0
 while ($true) {
-    # Check iteration limit
     if ($MaxIterations -gt 0 -and $Iteration -ge $MaxIterations) {
         Write-Host "Reached max iteration limit: $MaxIterations" -ForegroundColor Yellow
         break
     }
 
-    # Fetch pending tasks
-    $OpenTasks = Get-ChildItem -Path $TasksDir -Filter "*.md" -File | Sort-Object Name
-    $CompletedTasks = Get-ChildItem -Path $CompletedDir -Filter "*.md" -File
-    $TotalTasksCount = $OpenTasks.Count + $CompletedTasks.Count
-    $NextTaskName = "None"
-    $NextTaskDesc = "No description available."
+    $openJson = bd list --status=open --json 2>$null
+    $openIssues = @()
+    if ($openJson) { $openIssues = $openJson | ConvertFrom-Json }
+    $closedJson = bd list --status=closed --json --limit 100 2>$null
+    $closedCount = 0
+    if ($closedJson) { $closedCount = @($closedJson | ConvertFrom-Json).Count }
 
-    # If in building mode, verify there are tasks to work on
-    if ($Mode -eq "build") {
-        if ($OpenTasks.Count -eq 0) {
-            Write-Host "[DONE] No remaining open tasks. Work complete!" -ForegroundColor Green
-            # Update state file to finished
-            $EndTimeStr = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            $EndStateText = @(
-                "# Fabrik Loop Status: FINISHED / IDLE",
-                "",
-                "*   **Last Run Complete:** " + $EndTimeStr,
-                "*   **Outcome:** All tasks executed successfully!",
-                '*   **Status:** `IDLE`'
-            ) -join [Environment]::NewLine
-            $EndStateText | Out-File -FilePath $StateFile -Encoding utf8
+    $readyJson = bd ready --json 2>$null
+    $readyIssues = @()
+    if ($readyJson) { $readyIssues = $readyJson | ConvertFrom-Json }
+
+    $NextTaskId = 'plan'
+    $NextTaskDesc = 'PRD gap analysis and bd create'
+    if ($Mode -eq 'build') {
+        if ($openIssues.Count -eq 0) {
+            Write-Host '[DONE] No open Beads issues.' -ForegroundColor Green
             break
         }
-        $NextTask = $OpenTasks[0]
-        $NextTaskName = $NextTask.Name
-        # Read the first few lines to get the task title
-        $NextTaskLines = Get-Content -Path $NextTask.FullName -TotalCount 5
-        foreach ($Line in $NextTaskLines) {
-            if ($Line.Trim() -and -not $Line.StartsWith("#")) {
-                $NextTaskDesc = $Line.Trim()
-                break
-            }
+        if ($readyIssues.Count -eq 0) {
+            Write-Host '[BLOCKED] Open issues exist but none are ready.' -ForegroundColor Yellow
+            break
         }
-    } else {
-        $NextTaskName = "Planning Phase (Gap Analysis & PRD Triage)"
-        $NextTaskDesc = "Comparing docs/PRD.md against the src/ directory to generate task issues."
+        $NextTaskId = $readyIssues[0].id
+        $NextTaskDesc = $readyIssues[0].title
     }
 
-    $CycleStart = Get-Date
-    $CycleStartStr = $CycleStart.ToString("HH:mm:ss")
-
-    # Update terminal screen dashboard
     Clear-Host
-    
-    $ProgressString = ""
-    if ($Mode -eq "build" -and $TotalTasksCount -gt 0) {
-        $PercentComplete = [math]::Round(($CompletedTasks.Count / $TotalTasksCount) * 100)
-        $BarLength = 20
-        $Filled = [math]::Round(($PercentComplete / 100) * $BarLength)
-        $Empty = $BarLength - $Filled
-        $Bar = ("#" * $Filled) + ("-" * $Empty)
-        $ProgressString = "[$Bar] $PercentComplete% ($($CompletedTasks.Count)/$TotalTasksCount Tasks)"
-    }
+    Write-Host '====================================================' -ForegroundColor Cyan
+    Write-Host "[FABRIK] $Mode (iteration $($Iteration + 1))" -ForegroundColor Cyan
+    Write-Host "Open: $($openIssues.Count) | Closed: $closedCount | Ready: $($readyIssues.Count)" -ForegroundColor Gray
+    Write-Host "Target: $NextTaskId - $NextTaskDesc" -ForegroundColor Yellow
+    Write-Host '====================================================' -ForegroundColor Cyan
 
-    Write-Host "====================================================" -ForegroundColor Cyan
-    Write-Host "[FABRIK] DASHBOARD (Iteration: $($Iteration + 1))" -ForegroundColor Cyan
-    if ($ProgressString) {
-        Write-Host $ProgressString -ForegroundColor Green
-    }
-    Write-Host "====================================================" -ForegroundColor Cyan
-    Write-Host "Mode:         $Mode" -ForegroundColor Gray
-    Write-Host "Branch:       $Branch" -ForegroundColor Gray
-    Write-Host "Target Task:  $NextTaskName" -ForegroundColor Yellow
-    Write-Host "Description:  $NextTaskDesc" -ForegroundColor Gray
-    Write-Host "Started At:   $CycleStartStr" -ForegroundColor Gray
-    Write-Host "Remaining:    $($OpenTasks.Count) tasks" -ForegroundColor Gray
-    Write-Host "====================================================" -ForegroundColor Cyan
-    Write-Host "Status: Running OpenCode agent run..." -ForegroundColor DarkYellow
-
-    # Update the live state file (Using string concat to prevent backtick-escaping errors)
-    $RunStateText = @(
-        "# Fabrik Loop Status: RUNNING [~]",
-        "",
-        "*   **Last Update:** " + $CycleStart.ToString("yyyy-MM-dd HH:mm:ss"),
-        "*   **Iteration:** " + ($Iteration + 1),
-        '*   **Current Task:** ' + $NextTaskName + '`',
-        "*   **Description:** " + $NextTaskDesc,
-        "*   **Cycle Started At:** " + $CycleStartStr,
-        "*   **Pending Queue:** " + $OpenTasks.Count + " tasks",
-        '*   **Status:** `Active - Executing OpenCode Run`'
-    ) -join [Environment]::NewLine
-    $RunStateText | Out-File -FilePath $StateFile -Encoding utf8
-
-    # Run OpenCode CLI using the default agent (avoids read-only restrictions of 'plan' agent)
     $PromptText = Get-Content -Raw -Path $PromptFile
     opencode run $PromptText
 
-    # Calculate runtime duration
-    $CycleEnd = Get-Date
-    $Duration = $CycleEnd - $CycleStart
-    $DurationStr = "{0:mm}m {0:ss}s" -f $Duration
-
-    Write-Host "`nSyncing remote branch..." -ForegroundColor Gray
-    git push origin $Branch
-
-    # Write completion details to screen
-    Write-Host "Task complete! Duration: $DurationStr" -ForegroundColor Green
-
-    # Log task completion in state file
-    $LogEntry = '*   [' + $CycleEnd.ToString("HH:mm:ss") + '] Completed `' + $NextTaskName + '` in ' + $DurationStr
-    if (-not (Test-Path $StateFile)) { "" | Out-File -FilePath $StateFile }
-    $StateContent = Get-Content -Path $StateFile
-    
-    # Append log entry to state file
-    $NewState = @()
-    $HasLogHeader = $false
-    foreach ($Line in $StateContent) {
-        if ($Line.StartsWith("# Fabrik Loop Status:")) {
-            $NewState += "# Fabrik Loop Status: SLEEP / SYNCING [zZz]"
-        }
-        elseif ($Line.StartsWith("*   **Status:**")) {
-            $NewState += '*   **Status:** `Waiting for next iteration (Last cycle took ' + $DurationStr + ')`'
-        }
-        else {
-            $NewState += $Line
-        }
-        if ($Line -eq "## Recent Run Log") { $HasLogHeader = $true }
-    }
-    if (-not $HasLogHeader) {
-        $NewState += ""
-        $NewState += "## Recent Run Log"
-    }
-    $NewState += $LogEntry
-    $NewState | Out-File -FilePath $StateFile -Encoding utf8
+    git push origin $Branch 2>$null
 
     $Iteration++
-    
-    # If in plan mode, we only need 1 run to generate tasks
-    if ($Mode -eq "plan") {
-        Write-Host "Planning phase complete. Start the build loop with: .\.fabrik\loop.ps1 -Mode build" -ForegroundColor Green
+    if ($Mode -eq 'plan') {
+        Write-Host 'Planning complete. Run: .\.fabrik\loop.ps1 -Mode build' -ForegroundColor Green
         break
     }
-
-    Write-Host "======================== TASK CYCLE $Iteration COMPLETE ========================" -ForegroundColor Green
-    Start-Sleep -Seconds 3 # Short buffer between iterations
+    Start-Sleep -Seconds 3
 }

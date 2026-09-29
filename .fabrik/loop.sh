@@ -1,177 +1,78 @@
-#!/bin/bash
-# loop.sh
-# Bash loop runner for the AI workflow loop using OpenCode.
-# Includes real-time execution tracking, runtime timers, and a live state dashboard.
-# Usage: ./.fabrik/loop.sh [plan|build] [max_iterations]
+#!/usr/bin/env bash
+set -euo pipefail
 
-MODE=${1:-"build"}
-MAX_ITERATIONS=${2:-0}
+MODE="${1:-build}"
+MAX_ITERATIONS="${2:-0}"
 ITERATION=0
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo main)"
 
-# Resolve paths relative to script's directory (.fabrik/)
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROMPT_FILE="${SCRIPT_DIR}/PROMPT_${MODE}.md"
-TASKS_DIR="${SCRIPT_DIR}/.tasks"
 STATE_FILE="${SCRIPT_DIR}/state.md"
 
-if [ ! -f "$PROMPT_FILE" ]; then
-    echo "Error: Prompt file $PROMPT_FILE not found."
-    exit 1
+if [[ ! -f "$PROMPT_FILE" ]]; then
+  echo "Error: Prompt file $PROMPT_FILE not found."
+  exit 1
 fi
 
-# Initialize task folders
-mkdir -p "${TASKS_DIR}/completed"
+if ! command -v bd >/dev/null 2>&1; then
+  echo "bd not found. Run install/setup.sh first."
+  exit 1
+fi
 
-# Clear/Initialize the live state file
-START_TIME_STR=$(date "+%Y-%m-%d %H:%M:%S")
-cat << EOF > "$STATE_FILE"
+cat > "$STATE_FILE" <<EOF
 # Fabrik Loop Status: INITIALIZING
 
-*   **Started At:** $START_TIME_STR
-*   **Mode:** \`$MODE\`
-*   **Branch:** \`$CURRENT_BRANCH\`
-*   **Status:** \`Running Setup...\`
+*   **Started At:** $(date "+%Y-%m-%d %H:%M:%S")
+*   **Mode:** $MODE
+*   **Branch:** $CURRENT_BRANCH
 EOF
 
 while true; do
-    if [ $MAX_ITERATIONS -gt 0 ] && [ $ITERATION -ge $MAX_ITERATIONS ]; then
-        echo "Reached max iterations limit: $MAX_ITERATIONS"
-        break
+  if [[ $MAX_ITERATIONS -gt 0 && $ITERATION -ge $MAX_ITERATIONS ]]; then
+    echo "Reached max iterations: $MAX_ITERATIONS"
+    break
+  fi
+
+  OPEN_JSON="$(bd list --status=open --json 2>/dev/null || echo '[]')"
+  CLOSED_JSON="$(bd list --status=closed --json --limit 100 2>/dev/null || echo '[]')"
+  OPEN_COUNT="$(printf '%s' "$OPEN_JSON" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+  CLOSED_COUNT="$(printf '%s' "$CLOSED_JSON" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+  READY_JSON="$(bd ready --json 2>/dev/null || echo '[]')"
+
+  NEXT_ID="plan"
+  NEXT_DESC="PRD gap analysis and bd create"
+
+  if [[ "$MODE" == "build" ]]; then
+    if [[ "$OPEN_COUNT" -eq 0 ]]; then
+      echo "No open Beads issues."
+      break
     fi
-
-    # Fetch pending tasks and find the next task details
-    OPEN_TASKS=0
-    NEXT_TASK_NAME="None"
-    NEXT_TASK_DESC="No description available."
-    
-    COMPLETED_TASKS=0
-    TOTAL_TASKS_COUNT=0
-    if [ -d "$TASKS_DIR" ]; then
-        OPEN_TASKS=$(find "$TASKS_DIR" -maxdepth 1 -name "*.md" | wc -l)
-        if [ -d "${TASKS_DIR}/completed" ]; then
-            COMPLETED_TASKS=$(find "${TASKS_DIR}/completed" -maxdepth 1 -name "*.md" | wc -l)
-        fi
-        TOTAL_TASKS_COUNT=$((OPEN_TASKS + COMPLETED_TASKS))
+    READY_COUNT="$(printf '%s' "$READY_JSON" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+    if [[ "$READY_COUNT" -eq 0 ]]; then
+      echo "Open issues exist but none are ready."
+      break
     fi
+    NEXT_ID="$(printf '%s' "$READY_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')"
+    NEXT_DESC="$(printf '%s' "$READY_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["title"] if d else "")')"
+  fi
 
-    # If in building mode, verify tasks exist
-    if [ "$MODE" = "build" ]; then
-        if [ "$OPEN_TASKS" -eq 0 ]; then
-            echo -e "\n🎉 No remaining open tasks. Work complete!"
-            END_TIME_STR=$(date "+%Y-%m-%d %H:%M:%S")
-            cat << EOF > "$STATE_FILE"
-# Fabrik Loop Status: FINISHED / IDLE
+  clear || true
+  echo "===================================================="
+  echo "FABRIK $MODE (iteration $((ITERATION + 1)))"
+  echo "Open: $OPEN_COUNT | Closed: $CLOSED_COUNT"
+  echo "Target: $NEXT_ID — $NEXT_DESC"
+  echo "===================================================="
 
-*   **Last Run Complete:** $END_TIME_STR
-*   **Outcome:** All tasks executed successfully!
-*   **Status:** \`IDLE\`
-EOF
-            break
-        fi
-        
-        # Identify the next task file (sorted alphabetically)
-        NEXT_TASK_FILE=$(find "$TASKS_DIR" -maxdepth 1 -name "*.md" | sort | head -n 1)
-        NEXT_TASK_NAME=$(basename "$NEXT_TASK_FILE")
-        
-        # Read the first non-header line for description
-        while IFS= read -r line; do
-            trimmed=$(echo "$line" | xargs)
-            if [ -n "$trimmed" ] && [[ ! "$trimmed" =~ ^# ]]; then
-                NEXT_TASK_DESC="$trimmed"
-                break
-            fi
-        done < "$NEXT_TASK_FILE"
-    else
-        NEXT_TASK_NAME="Planning Phase (Gap Analysis & PRD Triage)"
-        NEXT_TASK_DESC="Comparing docs/PRD.md against the src/ directory to generate task issues."
-    fi
+  PROMPT_TEXT="$(cat "$PROMPT_FILE")"
+  opencode run "$PROMPT_TEXT"
 
-    CYCLE_START=$(date +%s)
-    CYCLE_START_STR=$(date "+%H:%M:%S")
+  git push origin "$CURRENT_BRANCH" 2>/dev/null || true
 
-    # Update terminal screen dashboard
-    clear
-    
-    PROGRESS_STRING=""
-    if [ "$MODE" = "build" ] && [ "$TOTAL_TASKS_COUNT" -gt 0 ]; then
-        PERCENT_COMPLETE=$(( (COMPLETED_TASKS * 100) / TOTAL_TASKS_COUNT ))
-        BAR_LENGTH=20
-        FILLED=$(( (PERCENT_COMPLETE * BAR_LENGTH) / 100 ))
-        EMPTY=$(( BAR_LENGTH - FILLED ))
-        BAR=$(printf "%${FILLED}s" | tr ' ' '#')
-        BAR="${BAR}$(printf "%${EMPTY}s" | tr ' ' '-')"
-        PROGRESS_STRING="[$BAR] $PERCENT_COMPLETE% ($COMPLETED_TASKS/$TOTAL_TASKS_COUNT Tasks)"
-    fi
-
-    echo "===================================================="
-    echo "🏭 FABRIK DASHBOARD (Iteration: $((ITERATION + 1)))"
-    if [ -n "$PROGRESS_STRING" ]; then
-        echo -e "\033[32m$PROGRESS_STRING\033[0m"
-    fi
-    echo "===================================================="
-    echo "Mode:         $MODE"
-    echo "Branch:       $CURRENT_BRANCH"
-    echo -e "Target Task:  \033[33m$NEXT_TASK_NAME\033[0m"
-    echo "Description:  $NEXT_TASK_DESC"
-    echo "Started At:   $CYCLE_START_STR"
-    echo "Remaining:    $OPEN_TASKS tasks"
-    echo "===================================================="
-    echo -e "Status: \033[35mRunning OpenCode agent run...\033[0m"
-
-    # Update the live state file
-    cat << EOF > "$STATE_FILE"
-# Fabrik Loop Status: RUNNING 🔄
-
-*   **Last Update:** $(date "+%Y-%m-%d %H:%M:%S")
-*   **Iteration:** $((ITERATION + 1))
-*   **Current Task:** \`$NEXT_TASK_NAME\`
-*   **Description:** $NEXT_TASK_DESC
-*   **Cycle Started At:** $CYCLE_START_STR
-*   **Pending Queue:** $OPEN_TASKS tasks
-*   **Status:** \`Active - Executing OpenCode Run\`
-EOF
-
-    # Read the prompt file contents into a variable
-    PROMPT_TEXT=$(cat "$PROMPT_FILE")
-
-    # Run OpenCode run command
-    opencode run --agent "$MODE" "$PROMPT_TEXT"
-
-    # Calculate runtime duration
-    CYCLE_END=$(date +%s)
-    DURATION=$((CYCLE_END - CYCLE_START))
-    MIN=$((DURATION / 60))
-    SEC=$((DURATION % 60))
-    DURATION_STR="${MIN}m ${SEC}s"
-
-    echo "Syncing remote branch..."
-    git push origin "$CURRENT_BRANCH" || echo "Git push skipped."
-
-    # Write completion details to screen
-    echo -e "\033[32mTask complete! Duration: $DURATION_STR\033[0m"
-
-    # Log task completion in state file
-    LOG_ENTRY="*   [$(date "+%H:%M:%S")] Completed \`$NEXT_TASK_NAME\` in $DURATION_STR"
-    
-    # Append log entry to state file
-    if ! grep -q "## Recent Run Log" "$STATE_FILE"; then
-        echo -e "\n## Recent Run Log" >> "$STATE_FILE"
-    fi
-    echo "$LOG_ENTRY" >> "$STATE_FILE"
-
-    # Update state header to sleeping
-    sed -i 's/# Fabrik Loop Status: RUNNING.*/# Fabrik Loop Status: SLEEP \/ SYNCING 😴/g' "$STATE_FILE"
-    sed -i "s/\*   \*\*Status:\*\*/\*   \*\*Status:\*\* \`Waiting for next iteration (Last cycle took $DURATION_STR)\`/g" "$STATE_FILE"
-
-    ITERATION=$((ITERATION + 1))
-
-    # Planning mode runs only once to generate tasks
-    if [ "$MODE" = "plan" ]; then
-        echo "Planning phase complete. Start the build loop with: ./.fabrik/loop.sh build"
-        break
-    fi
-
-    echo -e "\n======================== TASK CYCLE $ITERATION COMPLETE ========================\n"
-    sleep 3
+  ITERATION=$((ITERATION + 1))
+  if [[ "$MODE" == "plan" ]]; then
+    echo "Planning complete. Run: ./.fabrik/loop.sh build"
+    break
+  fi
+  sleep 3
 done

@@ -3,93 +3,49 @@ param (
     [string]$InitialPrompt
 )
 
-# fabrik.ps1
-# Master Orchestrator for the Fabrik workflow.
-# Run this script to execute the entire workflow back-to-back:
-# Grill Session (Interactive) -> PRD-to-Issues (Auto) -> Build Loops (Auto)
-# Usage: .\.fabrik\fabrik.ps1
-
-# Ensure paths relative to the script directory (.fabrik/)
 $FabrikDir = $PSScriptRoot
-$TasksDir = Join-Path $FabrikDir ".tasks"
-$PlanPromptFile = Join-Path $FabrikDir "PROMPT_plan.md"
-$BuildPromptFile = Join-Path $FabrikDir "PROMPT_build.md"
 
-# ----------------------------------------------------
-# Setup Verification Check
-# ----------------------------------------------------
 $RequiredSetupItems = @(
-    ".tasks",
     "docs",
     "styleguide",
-    "styleguide/STYLEGUIDE.md",
     "CONTEXT.md"
 )
 $SetupIncomplete = $false
 foreach ($Item in $RequiredSetupItems) {
-    $Path = Join-Path $FabrikDir $Item
-    if (-not (Test-Path $Path)) {
+    if (-not (Test-Path (Join-Path $FabrikDir $Item))) {
         $SetupIncomplete = $true
         break
     }
 }
 
+if (-not (Test-Path (Join-Path (Get-Location) '.beads'))) {
+    $SetupIncomplete = $true
+}
+
 if ($SetupIncomplete) {
-    Clear-Host
-    Write-Host "[WARNING] Fabrik setup is incomplete or has not been run in this directory." -ForegroundColor Red
-    Write-Host "Please execute the setup script to initialize the framework and skills:" -ForegroundColor Yellow
-    Write-Host "    .\.fabrik\setup.ps1" -ForegroundColor Yellow
-    Write-Host ""
+    Write-Host '[WARNING] Fabrik setup incomplete.' -ForegroundColor Red
+    Write-Host 'Run: .\install\setup.ps1 then .\install\init.ps1 .' -ForegroundColor Yellow
     exit 1
 }
 
 Clear-Host
-Write-Host "[FABRIK] Starting the Fabrik Workflow..." -ForegroundColor Cyan
+Write-Host '[FABRIK] Starting workflow...' -ForegroundColor Cyan
 
-# ----------------------------------------------------
-# Phase 1: Interactive Requirements Alignment
-# ----------------------------------------------------
 if ($Auto) {
-    Write-Host "`n====================================================" -ForegroundColor Gray
-    Write-Host "Step 1: Automated Requirements Alignment" -ForegroundColor Cyan
-    Write-Host "====================================================" -ForegroundColor Gray
-    
     if ([string]::IsNullOrWhiteSpace($InitialPrompt)) {
-        $InitialPrompt = Read-Host "Please enter the initial prompt for PRD generation"
+        $InitialPrompt = Read-Host 'Initial prompt for PRD generation'
     }
-
-    Write-Host "Running Automated PRD Generation..." -ForegroundColor Yellow
-    $promptCmd = "You are an expert product manager. Generate a detailed PRD in docs/PRD.md based on these requirements: $InitialPrompt"
+    $promptCmd = "You are an expert product manager. Generate a detailed PRD in .fabrik/docs/PRD.md based on these requirements: $InitialPrompt"
     opencode run $promptCmd
 } else {
-    Write-Host "`n====================================================" -ForegroundColor Gray
-    Write-Host "Step 1: Interactive Alignment Session" -ForegroundColor Cyan
-    Write-Host "====================================================" -ForegroundColor Gray
-    Write-Host "1. Type /grill-with-docs to stress-test your plan." -ForegroundColor Gray
-    Write-Host "2. Type /to-prd to write the requirements to docs/PRD.md or .fabrik/docs/PRD.md." -ForegroundColor Gray
-    Write-Host "3. Type /exit to hand over control to the automated pipeline." -ForegroundColor Yellow
-    Write-Host "Press enter when ready to launch the OpenCode TUI..."
-    Read-Host
-
+    Write-Host 'Step 1: Interactive alignment' -ForegroundColor Cyan
+    Write-Host '1. /grill-with-docs  2. /to-prd  3. /exit when done' -ForegroundColor Gray
+    Read-Host 'Press enter to launch OpenCode TUI'
     opencode
 }
 
-# ----------------------------------------------------
-# Phase 2: Automated Planning (PRD to Issues)
-# ----------------------------------------------------
-Write-Host "`n====================================================" -ForegroundColor Gray
-Write-Host "Step 2: Running Automated Planning (PRD-to-Issues)..." -ForegroundColor Cyan
-Write-Host "====================================================" -ForegroundColor Gray
-
-# Delegate execution directly to loop.ps1
+Write-Host 'Step 2: Planning (PRD to Beads issues)...' -ForegroundColor Cyan
 & "$PSScriptRoot/loop.ps1" -Mode plan
 
-# ----------------------------------------------------
-# Phase 3: Automated Feature Building (AFK Loop)
-# ----------------------------------------------------
-Write-Host "`n====================================================" -ForegroundColor Gray
-Write-Host "Step 3: Starting Autonomous Feature Assembly..." -ForegroundColor Cyan
-Write-Host "====================================================" -ForegroundColor Gray
-
-# Delegate execution directly to loop.ps1
+Write-Host 'Step 3: Build loop...' -ForegroundColor Cyan
 & "$PSScriptRoot/loop.ps1" -Mode build

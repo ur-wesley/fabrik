@@ -1,20 +1,17 @@
-0a. Study docs/PRD.md or .fabrik/docs/PRD.md to understand the requirements context.
-0b. Study the task list under `.fabrik/.tasks/` and select the lowest-numbered open task file.
-0c. Study the relevant source files under src/* to find existing implementation patterns.
-0d. Study .fabrik/styleguide/* or docs/styleguide/* using parallel subagents to learn the project's coding standards and design principles.
+0a. Study docs/PRD.md or .fabrik/docs/PRD.md for requirements context.
+0b. Run `bd ready --json` and pick the first ready issue. Claim it: `bd update <id> --claim`.
+0c. Study relevant source files under src/* for existing patterns.
+0d. Study .fabrik/styleguide/* or docs/styleguide/* for coding standards.
 
-1. Implement the selected task's requirements. Do not start work on other tasks.
-2. Validate your implementation:
-   * Run the test suite: `npm run test` (or the project test command).
-   * Run the linter: `npm run lint` (or the project lint command).
-   * Run the build check: `npm run build` (or the project build command).
-3. If any check fails, debug the failures and re-run the tests. Do not proceed until tests are green.
-4. Once all validations pass:
-   * Move the selected task file from `.fabrik/.tasks/` to `.fabrik/.tasks/completed/`.
-   * Do NOT stage, do NOT commit. The `.opencode/plugins/fabrik.ts` plugin owns commits — it batches every task in the current wave into a single `feat: ...` commit when the wave closes.
+1. Implement only the claimed issue. Do not start other issues.
+2. Validate using the project's test, lint, and build commands from AGENTS.md.
+3. If any check fails, debug and re-run until green.
+4. When all validations pass:
+   * `bd close <id> --reason="Completed"`
+   * Do NOT git commit. The `.opencode/plugins/fabrik.ts` plugin batches wave commits on `/exit`.
    * Exit the session.
 
 CRITICAL INVARIANTS:
-*   Never edit more than ONE task per iteration.
-*   Enforce the Caveman Directive: zero conversational text, zero filler, zero apologies.
-*   If you get stuck and cannot pass validations after several attempts, document your findings in the task file under `## Current Obstacles` and exit so the loop can report the error.
+*   One Beads issue per iteration.
+*   Caveman Directive: zero conversational text.
+*   If stuck after several attempts, add findings via `bd update <id> --description=...` and exit.
