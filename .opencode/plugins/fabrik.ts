@@ -1,58 +1,75 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Event, EventSessionIdle, Message, Part } from "@opencode-ai/sdk";
 import { spawn } from "node:child_process";
-import { readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-interface Task {
-  filename: string;
-  number: number;
+interface BeadsIssue {
+  id: string;
   title: string;
-  body: string;
-  blockedBy: number[];
+  description?: string;
+  status: string;
 }
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
-const parseBlockedBy = (body: string): number[] => {
-  const m = body.match(/##\s*Blocked by\s*\n([\s\S]*?)(?=\n##|\s*$)/i);
-  if (!m) return [];
-  const text = m[1]!.trim().toLowerCase();
-  if (text.startsWith("none") || text === "") return [];
-  const nums: number[] = [];
-  for (const match of text.matchAll(/#?(\d+)/g)) nums.push(Number(match[1]));
-  return nums;
+const runBdJson = async <T>(directory: string, args: string[]): Promise<T | null> => {
+  return new Promise((resolve) => {
+    const child = spawn("bd", args, {
+      cwd: directory,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.on("error", () => resolve(null));
+    child.on("close", (code) => {
+      if (code !== 0 || !stdout.trim()) {
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout) as T);
+      } catch {
+        resolve(null);
+      }
+    });
+  });
 };
 
-const parseTask = (filename: string, body: string): Task | null => {
-  const m = filename.match(/^(\d+)-(.+)\.md$/);
-  if (!m) return null;
-  return {
-    filename,
-    number: Number(m[1]),
-    title: m[2]!,
-    body,
-    blockedBy: parseBlockedBy(body),
-  };
+const listOpen = async (directory: string): Promise<BeadsIssue[]> => {
+  const result = await runBdJson<BeadsIssue[]>(directory, ["list", "--status=open", "--json"]);
+  return result ?? [];
 };
 
-const buildWaves = (tasks: Task[]): Task[][] => {
-  const waves: Task[][] = [];
-  const remaining = new Set(tasks);
+const listBlockers = async (directory: string, id: string): Promise<string[]> => {
+  const result = await runBdJson<Array<{ id: string }>>(directory, ["dep", "list", id, "--json"]);
+  return (result ?? []).map((d) => d.id);
+};
+
+const buildWaves = async (directory: string, issues: BeadsIssue[]): Promise<BeadsIssue[][]> => {
+  const waves: BeadsIssue[][] = [];
+  const remaining = new Map(issues.map((i) => [i.id, i]));
+  const blockers = new Map<string, string[]>();
+  for (const issue of issues) {
+    blockers.set(issue.id, await listBlockers(directory, issue.id));
+  }
+
   while (remaining.size > 0) {
-    const wave: Task[] = [];
-    for (const t of remaining) {
-      const hasBlocker = t.blockedBy.some((n) =>
-        [...remaining].some((r) => r.number === n),
-      );
-      if (!hasBlocker) wave.push(t);
+    const wave: BeadsIssue[] = [];
+    for (const issue of remaining.values()) {
+      const deps = blockers.get(issue.id) ?? [];
+      const hasOpenBlocker = deps.some((depId) => remaining.has(depId));
+      if (!hasOpenBlocker) wave.push(issue);
     }
     if (wave.length === 0) {
-      waves.push([...remaining]);
+      waves.push([...remaining.values()]);
       break;
     }
     waves.push(wave);
-    for (const t of wave) remaining.delete(t);
+    for (const issue of wave) remaining.delete(issue.id);
   }
   return waves;
 };
@@ -67,61 +84,52 @@ const lastUserText = (msgs: ReadonlyArray<{ info: Message; parts: Part[] }>): st
   return "";
 };
 
-export const FabrikPlugin: Plugin = async ({ client, $, directory }) => {
-  const tasksDir = join(directory, ".fabrik", ".tasks");
-  const completedDir = join(tasksDir, "completed");
+const runBuildPrompt = (
+  directory: string,
+  issue: BeadsIssue,
+): Promise<{ ok: boolean; code: number | null }> => {
+  return new Promise((resolve) => {
+    const promptPath = join(directory, ".fabrik", "PROMPT_build.md");
+    const child = spawn("opencode", ["run", `@${promptPath}\n\nIssue: ${issue.id} — ${issue.title}\n\n${issue.description ?? ""}`], {
+      cwd: directory,
+      stdio: "inherit",
+      windowsHide: true,
+      shell: true,
+    });
+    child.on("error", () => resolve({ ok: false, code: -1 }));
+    child.on("close", (code: number | null) => resolve({ ok: code === 0, code }));
+  });
+};
 
+const closeIssue = async (directory: string, id: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const child = spawn("bd", ["close", id, "--reason=Completed by fabrik loop"], {
+      cwd: directory,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
+};
+
+const annotateIssue = async (directory: string, issue: BeadsIssue, reason: string): Promise<void> => {
+  const path = join(directory, ".fabrik", "state.md");
+  await writeFile(
+    path,
+    `# Fabrik loop obstacle\n\nIssue: ${issue.id} — ${issue.title}\nReason: ${reason}\n`,
+    "utf8",
+  );
+};
+
+export const FabrikPlugin: Plugin = async ({ client, $, directory }) => {
   const log = async (level: LogLevel, message: string): Promise<void> => {
     await client.app.log({ body: { service: "fabrik", level, message } });
   };
 
-  const loadTasks = async (): Promise<Task[]> => {
-    let files: string[];
-    try {
-      files = await readdir(tasksDir);
-    } catch {
-      return [];
-    }
-    const tasks: Task[] = [];
-    for (const f of files) {
-      if (!f.endsWith(".md")) continue;
-      const body = await readFile(join(tasksDir, f), "utf8");
-      const t = parseTask(f, body);
-      if (t) tasks.push(t);
-    }
-    return tasks.sort((a, b) => a.number - b.number);
-  };
-
-  const archiveTask = async (task: Task): Promise<void> => {
-    await rename(join(tasksDir, task.filename), join(completedDir, task.filename));
-  };
-
-  const markStuck = async (task: Task, reason: string): Promise<void> => {
-    const path = join(tasksDir, task.filename);
-    const body = await readFile(path, "utf8");
-    await writeFile(
-      path,
-      `${body}\n\n## Discoveries / Obstacles\n\n- runner exit non-zero\n- ${reason}\n`,
-    );
-  };
-
-  const runTask = (
-    task: Task,
-  ): Promise<{ ok: boolean; code: number | null }> => {
-    return new Promise((resolve) => {
-      const child = spawn("opencode", ["run", task.body], {
-        cwd: directory,
-        stdio: "inherit",
-        windowsHide: true,
-      });
-      child.on("error", () => resolve({ ok: false, code: -1 }));
-      child.on("close", (code: number | null) => resolve({ ok: code === 0, code }));
-    });
-  };
-
-  const commitWave = async (wave: Task[]): Promise<void> => {
+  const commitWave = async (wave: BeadsIssue[]): Promise<void> => {
     const titles = wave.map((t) => t.title).join(", ");
-    const summary = wave.map((t) => `- ${t.filename}`).join("\n");
+    const summary = wave.map((t) => `- ${t.id}: ${t.title}`).join("\n");
     const msg = `feat: ${titles}\n\n${summary}`;
     await $`git add -A`.cwd(directory);
     await $`git commit -m ${msg}`.cwd(directory);
@@ -130,35 +138,39 @@ export const FabrikPlugin: Plugin = async ({ client, $, directory }) => {
   const runLoop = async (): Promise<void> => {
     await log("info", "fabrik: loop starting");
     while (true) {
-      const tasks = await loadTasks();
-      if (tasks.length === 0) {
-        await log("info", "fabrik: no open tasks remaining — done");
+      const issues = await listOpen(directory);
+      if (issues.length === 0) {
+        await log("info", "fabrik: no open Beads issues — done");
         return;
       }
-      const waves = buildWaves(tasks);
+
+      const waves = await buildWaves(directory, issues);
       const wave = waves[0];
       if (!wave || wave.length === 0) break;
 
       const next = wave[0]!;
-      await log("info", `fabrik: running ${next.filename}`);
+      await log("info", `fabrik: running ${next.id} — ${next.title}`);
 
-      const result = await runTask(next);
+      const result = await runBuildPrompt(directory, next);
       if (!result.ok) {
-        await markStuck(next, `exit code ${result.code}`);
-        await log("warn", `fabrik: ${next.filename} failed — paused`);
+        await annotateIssue(directory, next, `exit code ${result.code}`);
+        await log("warn", `fabrik: ${next.id} failed — paused`);
         return;
       }
 
-      await archiveTask(next);
+      const closed = await closeIssue(directory, next.id);
+      if (!closed) {
+        await annotateIssue(directory, next, "bd close failed");
+        await log("warn", `fabrik: could not close ${next.id}`);
+        return;
+      }
 
-      const refreshed = await loadTasks();
-      const waveStillOpen = wave.filter((w) =>
-        refreshed.some((t) => t.filename === w.filename),
-      );
+      const refreshed = await listOpen(directory);
+      const waveStillOpen = wave.filter((w) => refreshed.some((t) => t.id === w.id));
       if (waveStillOpen.length === 0) {
         try {
           await commitWave(wave);
-          await log("info", `fabrik: wave committed (${wave.length} tasks)`);
+          await log("info", `fabrik: wave committed (${wave.length} issues)`);
         } catch (e) {
           await log("error", `fabrik: commit failed: ${(e as Error).message}`);
         }
