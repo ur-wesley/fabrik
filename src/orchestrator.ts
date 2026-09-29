@@ -1,23 +1,17 @@
-import { readdirSync, readFileSync, existsSync, mkdirSync, renameSync } from 'fs';
-import { join } from 'path';
 import { execSync } from 'child_process';
 import { loadConfig, type FabrikConfig } from './config';
-import { parseYaml } from './yaml';
+import {
+  beadsAvailable,
+  claimReadyIssue,
+  closeIssue,
+  getReadyIssues,
+  listIssues,
+  type BeadsIssue,
+} from './bd';
 import { runCatching, matchResult } from '@ur-wesley/ts-prelude/result';
-import { fromNullable, map } from '@ur-wesley/ts-prelude/option';
 import { logger } from '@ur-wesley/ts-prelude/log';
 
 const log = logger.withTag('fabrik:orchestrator');
-
-export function parseTaskFrontmatter(content: string): { model?: string } {
-  if (!content.startsWith('---')) return {};
-  const endIdx = content.indexOf('---', 3);
-  if (endIdx === -1) return {};
-  const frontmatterStr = content.slice(3, endIdx).trim();
-  const parsed = parseYaml(frontmatterStr);
-  const modelStr = typeof parsed.model === 'string' ? parsed.model : undefined;
-  return modelStr ? { model: modelStr } : {};
-}
 
 export function resolveModel(
   config: FabrikConfig,
@@ -59,90 +53,73 @@ export interface TaskStatus {
   openCount: number;
   inProgressCount: number;
   completedCount: number;
+  nextTaskId?: string;
   nextTaskName?: string;
   nextTaskModel?: string;
 }
 
+function nextReady(cwd: string): BeadsIssue | undefined {
+  const ready = getReadyIssues(cwd);
+  return ready[0];
+}
+
 export function getTaskStatus(cwd: string): TaskStatus {
-  const tasksDir = join(cwd, '.fabrik', '.tasks');
-  const inProgressDir = join(tasksDir, '.in-progress');
-  const completedDir = join(tasksDir, 'completed');
-
-  const openTasks = existsSync(tasksDir)
-    ? readdirSync(tasksDir).filter((f) => f.endsWith('.md')).sort()
-    : [];
-  const inProgressCount = existsSync(inProgressDir)
-    ? readdirSync(inProgressDir).filter((f) => f.endsWith('.md')).length
-    : 0;
-  const completedCount = existsSync(completedDir)
-    ? readdirSync(completedDir).filter((f) => f.endsWith('.md')).length
-    : 0;
-
-  let nextTaskModel: string | undefined;
-  if (openTasks.length > 0) {
-    const config = loadConfig(cwd);
-    const readRes = runCatching(() => readFileSync(join(tasksDir, openTasks[0]!), 'utf8'));
-    map(fromNullable(readRes.isOk() ? readRes.value : null), (content) => {
-      const frontmatter = parseTaskFrontmatter(content);
-      nextTaskModel = resolveModel(config, 'build', frontmatter.model);
-    });
+  if (!beadsAvailable(cwd)) {
+    return { openCount: 0, inProgressCount: 0, completedCount: 0 };
   }
 
+  const open = listIssues(cwd, 'open');
+  const inProgress = listIssues(cwd, 'in_progress');
+  const completed = listIssues(cwd, 'closed');
+  const config = loadConfig(cwd);
+  const next = nextReady(cwd);
+
   const result: TaskStatus = {
-    openCount: openTasks.length,
-    inProgressCount,
-    completedCount,
+    openCount: open.length,
+    inProgressCount: inProgress.length,
+    completedCount: completed.length,
   };
-  if (openTasks[0]) result.nextTaskName = openTasks[0];
-  if (nextTaskModel) result.nextTaskModel = nextTaskModel;
+  if (next) {
+    result.nextTaskId = next.id;
+    result.nextTaskName = next.title;
+    const model = resolveModel(config, 'build');
+    if (model) result.nextTaskModel = model;
+  }
 
   return result;
 }
 
 export function claimNextTask(cwd: string): {
   status: 'locked' | 'empty';
+  taskId?: string;
   taskName?: string;
   model?: string;
   content?: string;
 } {
-  const tasksDir = join(cwd, '.fabrik', '.tasks');
-  const inProgressDir = join(tasksDir, '.in-progress');
-  if (!existsSync(tasksDir)) mkdirSync(tasksDir, { recursive: true });
-  if (!existsSync(inProgressDir)) mkdirSync(inProgressDir, { recursive: true });
-
-  const openTasks = readdirSync(tasksDir)
-    .filter((f) => f.endsWith('.md'))
-    .sort();
-
-  if (openTasks.length === 0) {
+  if (!beadsAvailable(cwd)) {
     return { status: 'empty' };
   }
 
-  const taskName = openTasks[0]!;
-  const srcPath = join(tasksDir, taskName);
-  const destPath = join(inProgressDir, taskName);
+  const issue = claimReadyIssue(cwd);
+  if (!issue) {
+    return { status: 'empty' };
+  }
 
-  const contentRes = runCatching(() => readFileSync(srcPath, 'utf8'));
-  const content = contentRes.isOk() ? contentRes.value : '';
-  const frontmatter = parseTaskFrontmatter(content);
   const config = loadConfig(cwd);
-  const model = resolveModel(config, 'build', frontmatter.model);
-
-  const lockRes = runCatching(() => renameSync(srcPath, destPath));
-  matchResult(lockRes, {
-    ok: () => log.info(`Acquired session task lock for ${taskName}`),
-    err: () => log.warn(`Failed to acquire lock for ${taskName}, using direct file reference`),
-  });
+  const model = resolveModel(config, 'build');
+  log.info(`Claimed Beads issue ${issue.id}: ${issue.title}`);
 
   const res: {
     status: 'locked' | 'empty';
+    taskId?: string;
     taskName?: string;
     model?: string;
     content?: string;
   } = {
     status: 'locked',
-    taskName,
-    content,
+    taskId: issue.id,
+    taskName: issue.title,
+    content: issue.description ?? issue.title,
   };
   if (model) res.model = model;
 
@@ -151,25 +128,17 @@ export function claimNextTask(cwd: string): {
 
 export function completeTask(
   cwd: string,
-  taskName: string,
-): { status: 'completed' | 'error'; taskName: string; message?: string } {
+  taskId: string,
+): { status: 'completed' | 'error'; taskId: string; taskName?: string; message?: string } {
   const config = loadConfig(cwd);
-  const tasksDir = join(cwd, '.fabrik', '.tasks');
-  const inProgressDir = join(tasksDir, '.in-progress');
-  const completedDir = join(tasksDir, 'completed');
-  if (!existsSync(completedDir)) mkdirSync(completedDir, { recursive: true });
 
-  const inProgressPath = join(inProgressDir, taskName);
-  const srcPath = existsSync(inProgressPath) ? inProgressPath : join(tasksDir, taskName);
-  const destPath = join(completedDir, taskName);
-
-  if (existsSync(srcPath)) {
-    runCatching(() => renameSync(srcPath, destPath));
+  if (!closeIssue(cwd, taskId)) {
+    return { status: 'error', taskId, message: `Failed to close ${taskId}` };
   }
 
   if (config.session?.auto_commit) {
-    commitTask(cwd, taskName);
+    commitTask(cwd, taskId);
   }
 
-  return { status: 'completed', taskName };
+  return { status: 'completed', taskId };
 }
