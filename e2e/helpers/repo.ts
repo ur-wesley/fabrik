@@ -47,12 +47,16 @@ export function initFabrikRepo(repoPath: string): void {
   mkdirSync(join(fabrikDir, 'docs'), { recursive: true });
   mkdirSync(join(fabrikDir, 'specs'), { recursive: true });
   mkdirSync(join(fabrikDir, 'styleguide'), { recursive: true });
+  mkdirSync(join(fabrikDir, 'agents'), { recursive: true });
 
   const configPath = join(fabrikDir, 'config.yaml');
   if (!existsSync(configPath)) {
-    const template = join(FABRIK_ROOT, '.fabrik', 'config.yaml');
+    const template = join(FABRIK_ROOT, 'install', 'templates', 'fabrik', 'config.yaml');
+    const legacy = join(FABRIK_ROOT, '.fabrik', 'config.yaml');
     if (existsSync(template)) {
       cpSync(template, configPath);
+    } else if (existsSync(legacy)) {
+      cpSync(legacy, configPath);
     } else {
       writeFileSync(
         configPath,
@@ -87,6 +91,8 @@ tools:
 
 export function bootstrapFabrikDir(repoPath: string): void {
   const templateDir = join(FABRIK_ROOT, '.fabrik');
+  const canonicalDir = join(FABRIK_ROOT, 'install', 'templates', 'fabrik');
+  const agentsSrc = join(FABRIK_ROOT, 'install', 'templates', 'agents');
   const targetDir = join(repoPath, '.fabrik');
   const files = [
     'PROMPT_plan.md',
@@ -98,7 +104,6 @@ export function bootstrapFabrikDir(repoPath: string): void {
     'AGENTS.md',
     'setup.ps1',
     'setup.sh',
-    'CONTEXT.md',
   ];
   for (const file of files) {
     const src = join(templateDir, file);
@@ -107,9 +112,28 @@ export function bootstrapFabrikDir(repoPath: string): void {
       cpSync(src, dst);
     }
   }
+  for (const file of ['README.md', 'CONTEXT.md', 'config.yaml', 'skills.md']) {
+    const src = join(canonicalDir, file);
+    const dst = join(targetDir, file);
+    if (existsSync(src) && !existsSync(dst)) {
+      cpSync(src, dst);
+    }
+  }
+  const giSrc = join(canonicalDir, 'gitignore');
+  const giDst = join(targetDir, '.gitignore');
+  if (existsSync(giSrc) && !existsSync(giDst)) {
+    cpSync(giSrc, giDst);
+  }
   const styleguide = join(targetDir, 'styleguide', 'STYLEGUIDE.md');
   if (!existsSync(styleguide) && existsSync(join(templateDir, 'styleguide', 'STYLEGUIDE.md'))) {
     cpSync(join(templateDir, 'styleguide', 'STYLEGUIDE.md'), styleguide);
+  }
+  for (const a of ['explore', 'builder', 'reviewer']) {
+    const src = join(agentsSrc, `${a}.md`);
+    const dst = join(targetDir, 'agents', `${a}.md`);
+    if (existsSync(src) && !existsSync(dst)) {
+      cpSync(src, dst);
+    }
   }
 }
 
