@@ -24,13 +24,16 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand('fabrik-init', {
-    description: 'Initialize Fabrik config and Beads in this repository',
+    description: 'Initialize Fabrik hub (.fabrik), config, Beads, Cursor/Pi/OpenCode skills',
     handler: (_args, ctx) => {
       const fabrikDir = join(cwd, '.fabrik');
 
       runCatching(() => {
         if (!existsSync(fabrikDir)) mkdirSync(fabrikDir, { recursive: true });
         mkdirSync(join(fabrikDir, 'docs'), { recursive: true });
+        mkdirSync(join(fabrikDir, 'specs'), { recursive: true });
+        mkdirSync(join(fabrikDir, 'styleguide'), { recursive: true });
+        mkdirSync(join(fabrikDir, 'agents'), { recursive: true });
 
         const configYamlPath = join(fabrikDir, 'config.yaml');
         if (!existsSync(configYamlPath)) {
@@ -38,15 +41,47 @@ export default function fabrikExtension(pi: ExtensionAPI): void {
           writeFileSync(configYamlPath, yamlStr, 'utf8');
         }
 
+        const gitignorePath = join(fabrikDir, '.gitignore');
+        if (!existsSync(gitignorePath)) {
+          writeFileSync(
+            gitignorePath,
+            '# local only, don\'t commit\n.local/\n*.log\n*.tmp\ngraphify-out/\nengram.db*\n.beads/proxieddb/\nnode_modules/\n',
+            'utf8',
+          );
+        }
+
         if (!beadsAvailable(cwd)) {
-          execSync('bd init', { cwd, stdio: 'inherit' });
+          execSync('bd init --non-interactive --skip-agents --skip-hooks -q', { cwd, stdio: 'inherit' });
         }
       });
 
-      const msg = `Initialized .fabrik/config.yaml and Beads for Pi Agent (Fabrik v${VERSION}).`;
+      const msg = `Fabrik hub ready (.fabrik/README, config, agents, Beads). Apps: Cursor, OpenCode, Pi (v${VERSION}).`;
       log.success(msg);
       if (ctx.ui?.notify) {
         ctx.ui.notify(msg, 'success');
+      }
+    },
+  });
+
+  pi.registerCommand('fabrik-check', {
+    description: 'Check Fabrik tools (bd, engram, graphify, bun, pi)',
+    handler: (_args, ctx) => {
+      const tools = ['bd', 'engram', 'graphify', 'bun', 'pi'] as const;
+      const missing: string[] = [];
+      for (const t of tools) {
+        const r = runCatching(() => execSync(`${t} --version`, { cwd, stdio: 'ignore' }));
+        if (!r.isOk()) {
+          const r2 = runCatching(() => execSync(`where ${t}`, { cwd, stdio: 'ignore' }));
+          if (!r2.isOk()) missing.push(t);
+        }
+      }
+      const msg =
+        missing.length === 0
+          ? 'Fabrik check: all tools ok (bd, engram, graphify, bun, pi).'
+          : `Fabrik check: missing ${missing.join(', ')}. Run install/setup.sh or setup.ps1.`;
+      log.info(msg);
+      if (ctx.ui?.notify) {
+        ctx.ui.notify(msg, missing.length === 0 ? 'success' : 'warn');
       }
     },
   });

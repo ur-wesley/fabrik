@@ -22,6 +22,8 @@ const SessionConfigSchema = v.object({
 const ToolsConfigSchema = v.object({
   rtk: v.optional(v.boolean(), true),
   engram: v.optional(v.boolean(), true),
+  graphify: v.optional(v.boolean(), true),
+  beads: v.optional(v.boolean(), true),
   caveman: v.optional(v.boolean(), true),
   ponytail: v.optional(v.boolean(), true),
 });
@@ -32,12 +34,18 @@ const FabrikConfigSchema = v.object({
   session: v.optional(SessionConfigSchema, {}),
   tools: v.optional(ToolsConfigSchema, {}),
   skills: v.optional(v.array(v.string()), [
+    'i-have-adhd',
     'caveman',
-    'mattpocock-planner',
     'ponytail',
     'rtk-usage',
-    'devin-fusion',
+    'tdd',
+    'diagnose',
+    'guardrails',
+    'grill-with-docs',
+    'to-prd',
+    'to-issues',
   ]),
+  subagents: v.optional(v.array(v.string()), ['orchestrator', 'explore', 'researcher', 'briefer', 'planner', 'builder', 'tester', 'reviewer', 'style-smells', 'security']),
 });
 
 export type FabrikConfig = v.InferOutput<typeof FabrikConfigSchema>;
@@ -54,10 +62,24 @@ export const DEFAULT_CONFIG: FabrikConfig = {
   tools: {
     rtk: true,
     engram: true,
+    graphify: true,
+    beads: true,
     caveman: true,
     ponytail: true,
   },
-  skills: ['caveman', 'mattpocock-planner', 'ponytail', 'rtk-usage', 'devin-fusion'],
+  skills: [
+    'i-have-adhd',
+    'caveman',
+    'ponytail',
+    'rtk-usage',
+    'tdd',
+    'diagnose',
+    'guardrails',
+    'grill-with-docs',
+    'to-prd',
+    'to-issues',
+  ],
+  subagents: ['orchestrator', 'explore', 'researcher', 'briefer', 'planner', 'builder', 'tester', 'reviewer', 'style-smells', 'security'],
 };
 
 export function loadConfig(cwd: string): FabrikConfig {
