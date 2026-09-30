@@ -1,12 +1,16 @@
 node_modules/
-.fabrik/
+.fabrik/.local/
+.fabrik/*.log
+.fabrik/*.tmp
 dist/
 bun.lock
 *.d.ts
 .graphify/
 .graphify-out/
-fabrik
-fabrik.exe
+/fabrik
+/fabrik.exe
+cli/fabrik
+cli/fabrik.exe
 tsconfig.tsbuildinfo
 
 # Beads / Dolt files (added by bd init)
