@@ -1,0 +1,88 @@
+# Release the fabrik Go CLI directly as binaries (no goreleaser).
+#
+# Trigger: push a tag like v1.0.0 (must match cli/package.json version).
+# Builds 3 targets only: windows/amd64, linux/amd64, darwin/arm64.
+# Version is stamped from cli/package.json via ldflags.
+#
+# Install options:
+#   go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@v1.0.0
+#   # or download the binary for your platform from the GitHub release
+name: release-cli
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64 }
+          - { goos: linux, goarch: amd64, ext: "", suffix: linux-amd64 }
+          - { goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64 }
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: cli/go.sum
+
+      - name: version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: check tag matches package.json
+        run: |
+          test "v${{ steps.version.outputs.version }}" = "${{ github.ref_name }}" || {
+            echo "tag ${{ github.ref_name }} != v${{ steps.version.outputs.version }} (cli/package.json)"; exit 1
+          }
+          test "${{ steps.version.outputs.version }}" = "$(node -p "require('../package.json').version")" || {
+            echo "cli/package.json != root package.json version; bump both"; exit 1
+          }
+
+      - name: test
+        run: go test ./...
+
+      - name: build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath \
+            -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
+            -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
+          sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabrik-${{ matrix.suffix }}
+          path: |
+            cli/fabrik-${{ matrix.suffix }}${{ matrix.ext }}
+            cli/fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: attach binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/fabrik-*
+          generate_release_notes: true
