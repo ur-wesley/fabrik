@@ -1,0 +1,126 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "orchestrator",
+  "agent": {
+    "build": {
+      "disable": true
+    },
+    "orchestrator": {
+      "description": "Fabrik router. Delegates to subagents, never edits directly.",
+      "mode": "primary",
+      "prompt": "{file:.fabrik/agents/orchestrator.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "task": {
+          "*": "deny",
+          "explore": "allow",
+          "researcher": "allow",
+          "briefer": "allow",
+          "planner": "allow",
+          "builder": "allow",
+          "tester": "allow",
+          "reviewer": "allow",
+          "style-smells": "allow",
+          "security": "allow"
+        }
+      }
+    },
+    "explore": {
+      "description": "Read-only codebase study. No edits.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/explore.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "researcher": {
+      "description": "External research: web, memory, docs. Read-only.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/researcher.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "briefer": {
+      "description": "Writes docs/IDEA.md, docs/STACK.md, docs/BRAND.md. Stops before code.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/briefer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "deny"
+      }
+    },
+    "planner": {
+      "description": "PRD/docs to Beads issues. No code.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/planner.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "bd *": "allow"
+        }
+      }
+    },
+    "builder": {
+      "description": "Implements one Beads issue. TDD, minimal diff.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/builder.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "tester": {
+      "description": "Runs tests, reports pass/fail. Minimal test fixes only.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/tester.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "reviewer": {
+      "description": "Diff review against spec. No implementation.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/reviewer.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "style-smells": {
+      "description": "Style and smells: YAGNI, KISS, DRY, SOLID. No implementation.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/style-smells.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "security": {
+      "description": "Security audit. Read-only, no fixes.",
+      "mode": "subagent",
+      "prompt": "{file:.fabrik/agents/security.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow"
+        }
+      }
+    }
+  }
+}
