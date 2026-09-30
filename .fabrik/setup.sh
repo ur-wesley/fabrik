@@ -14,10 +14,7 @@ fi
 
 bash "$INIT_SCRIPT" "$REPO_ROOT"
 
-if command -v npx >/dev/null 2>&1; then
-  echo "Installing mattpocock/skills for OpenCode..."
-  npx -y skills@latest add mattpocock/skills --agent opencode
-fi
+# Canonical skills/subagents are installed by install/init (Cursor, OpenCode, Pi only).
 
 CONTEXT_FILE="${SCRIPT_DIR}/CONTEXT.md"
 if [[ ! -f "$CONTEXT_FILE" ]]; then

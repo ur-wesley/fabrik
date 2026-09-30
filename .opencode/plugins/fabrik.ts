@@ -90,7 +90,7 @@ const runBuildPrompt = (
 ): Promise<{ ok: boolean; code: number | null }> => {
   return new Promise((resolve) => {
     const promptPath = join(directory, ".fabrik", "PROMPT_build.md");
-    const child = spawn("opencode", ["run", `@${promptPath}\n\nIssue: ${issue.id} — ${issue.title}\n\n${issue.description ?? ""}`], {
+    const child = spawn("opencode", ["run", "--agent", "builder", `@${promptPath}\n\nIssue: ${issue.id} — ${issue.title}\n\n${issue.description ?? ""}`], {
       cwd: directory,
       stdio: "inherit",
       windowsHide: true,

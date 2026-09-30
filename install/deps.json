@@ -36,5 +36,19 @@
   },
   "pi": {
     "mcpAdapter": "npm:@piarium/pi-mcp-adapter"
-  }
+  },
+  "agents": ["cursor", "opencode", "pi"],
+  "skills": [
+    "i-have-adhd",
+    "caveman",
+    "ponytail",
+    "rtk-usage",
+    "tdd",
+    "diagnose",
+    "guardrails",
+    "grill-with-docs",
+    "to-prd",
+    "to-issues"
+  ],
+  "subagents": ["orchestrator", "explore", "researcher", "briefer", "planner", "builder", "tester", "reviewer", "style-smells", "security"]
 }

@@ -1,0 +1,11 @@
+# local only, don't commit
+.local/
+*.log
+*.tmp
+graphify-out/
+engram.db*
+.beads/proxieddb/
+node_modules/
+
+# keep tracked:
+# README.md, AGENTS.md, CONTEXT.md, config.yaml, skills.md, agents/, docs/, specs/, styleguide/

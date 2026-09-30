@@ -10,10 +10,7 @@ if (-not (Test-Path $InitScript)) {
 
 & $InitScript -RepoPath $RepoRoot
 
-if (Get-Command npx -ErrorAction SilentlyContinue) {
-    Write-Host 'Installing mattpocock/skills for OpenCode...' -ForegroundColor Yellow
-    npx -y skills@latest add mattpocock/skills --agent opencode
-}
+# Canonical skills/subagents are installed by install/init (Cursor, OpenCode, Pi only).
 
 $ContextFile = Join-Path $PSScriptRoot 'CONTEXT.md'
 if (-not (Test-Path $ContextFile)) {
