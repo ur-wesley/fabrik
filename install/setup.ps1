@@ -12,7 +12,12 @@ $Root = $PSScriptRoot
 $DepsPath = Join-Path $Root 'deps.json'
 $Template = Join-Path $Root 'templates\workflow-note.md'
 $BinDir = Join-Path $env:USERPROFILE '.local\bin'
-$GraphifySkill = Join-Path $env:USERPROFILE '.agents\skills\graphify\SKILL.md'
+# Cursor / OpenCode / Pi only — never .agents, .claude, .codex.
+$GraphifySkills = @(
+  (Join-Path $env:USERPROFILE '.cursor\rules\graphify.mdc'),
+  (Join-Path $env:USERPROFILE '.config\opencode\skills\graphify.md'),
+  (Join-Path $env:USERPROFILE '.pi\agent\skills\graphify.md')
+)
 
 if (-not (Test-Path $DepsPath)) { Write-Error "Missing deps.json at $DepsPath" }
 $Deps = Get-Content -Raw -LiteralPath $DepsPath | ConvertFrom-Json
@@ -112,10 +117,15 @@ function Install-Engram {
 }
 
 function Install-Graphify {
-    Write-Step "Installing Graphify skill ($($Deps.graphify.skillRef))"
-    New-Item -ItemType Directory -Force -Path (Split-Path $GraphifySkill) | Out-Null
-    Invoke-WebRequest -UseBasicParsing -Uri $Deps.graphify.skillUrl -OutFile $GraphifySkill
-    Write-Host "Wrote $GraphifySkill"
+    Write-Step "Installing Graphify skill (Cursor, OpenCode, Pi only)"
+    $tmp = Join-Path $env:TEMP 'fabrik-graphify-skill.md'
+    Invoke-WebRequest -UseBasicParsing -Uri $Deps.graphify.skillUrl -OutFile $tmp
+    foreach ($dest in $GraphifySkills) {
+      New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+      Copy-Item -LiteralPath $tmp -Destination $dest -Force
+      Write-Host "Wrote $dest"
+    }
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     if (Test-Command graphify) { Write-Host 'graphify CLI already on PATH'; return }
     if ($SkipToolInstall) { return }
     if (Test-Command uv) {
@@ -168,8 +178,9 @@ function Setup-EngramAgents {
 
 function Setup-BeadsCursor {
     if (-not (Test-Command bd)) { return }
-    Write-Step 'Running bd setup cursor'
-    bd setup cursor
+    Write-Step 'Running bd setup (Cursor, OpenCode only)'
+    try { bd setup cursor } catch { }
+    try { bd setup opencode } catch { }
 }
 
 Write-Host 'Fabrik machine setup' -ForegroundColor Green

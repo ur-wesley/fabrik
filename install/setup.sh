@@ -5,7 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS_PATH="$ROOT/deps.json"
 TEMPLATE="$ROOT/templates/workflow-note.md"
 BIN_DIR="${HOME}/.local/bin"
-GRAPHIFY_SKILL="${HOME}/.agents/skills/graphify/SKILL.md"
+# Cursor / OpenCode / Pi only — never .agents, .claude, .codex.
+GRAPHIFY_SKILLS="${HOME}/.cursor/rules/graphify.mdc:${HOME}/.config/opencode/skills/graphify.md:${HOME}/.pi/agent/skills/graphify.md"
 
 SKIP_TOOL_INSTALL=false
 SKIP_ENGRAM_SETUP=false
@@ -151,10 +152,18 @@ PY
 }
 
 install_graphify() {
-  step "Installing Graphify skill"
-  mkdir -p "$(dirname "$GRAPHIFY_SKILL")"
-  curl -fsSL "$(json_get graphify.skillUrl)" -o "$GRAPHIFY_SKILL"
-  echo "Wrote $GRAPHIFY_SKILL"
+  step "Installing Graphify skill (Cursor, OpenCode, Pi only)"
+  local url tmp
+  url="$(json_get graphify.skillUrl)"
+  tmp="$(mktemp)"
+  curl -fsSL "$url" -o "$tmp"
+  local IFS=':'
+  for dest in $GRAPHIFY_SKILLS; do
+    mkdir -p "$(dirname "$dest")"
+    cp "$tmp" "$dest"
+    echo "Wrote $dest"
+  done
+  rm -f "$tmp"
   if command_exists graphify; then echo "graphify CLI already on PATH"; return; fi
   if [[ "$SKIP_TOOL_INSTALL" == true ]]; then return; fi
   if command_exists uv; then
@@ -202,8 +211,9 @@ setup_engram_agents() {
 
 setup_beads_cursor() {
   if ! command_exists bd; then return; fi
-  step "Running bd setup cursor"
-  bd setup cursor
+  step "Running bd setup (Cursor, OpenCode only)"
+  bd setup cursor || true
+  bd setup opencode || true
 }
 
 echo "Fabrik machine setup"
