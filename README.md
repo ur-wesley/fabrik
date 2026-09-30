@@ -4,7 +4,29 @@ One cross-platform AI workflow for **Cursor**, **OpenCode**, and **Pi**: grill â
 
 Pi extension + OpenCode plugin + shell orchestrators. Models stay in each app's picker.
 
-## Quick start
+## Quick start (Go CLI, recommended)
+
+```bash
+go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest
+fabrik setup --repo /path/to/your-repo   # interactive; --yes for CI, --dry-run to preview
+```
+
+Or download `fabrik-windows-amd64.exe` / `fabrik-linux-amd64` / `fabrik-darwin-arm64`
+from the GitHub release. Version lives in `cli/package.json`; releases are tagged `v<version>`.
+
+```bash
+fabrik setup [--skip-tool-install] [--skip-engram-setup] [--skip-pi-packages] [--repo PATH]
+fabrik init [PATH] [--skip-checks]   # per-repo .fabrik hub + 3-app wiring
+fabrik check [--json]                # probe bd, engram, graphify, bun, pi, uv
+fabrik update-deps --deps install/deps.json  # refresh pins from GitHub/PyPI
+fabrik version
+```
+
+Dev: `cd cli && go test ./...`. Release targets: windows/amd64, linux/amd64, darwin/arm64.
+
+## Quick start (shell scripts)
+
+Shell scripts in `install/` remain as fallback:
 
 ### Machine (once)
 
@@ -86,10 +108,11 @@ pi install git:https://github.com/ur-wesley/fabrik.git
 
 | Path | Role |
 |------|------|
-| `install/setup.ps1` / `setup.sh` | Machine install (bd, engram, graphify, MCP) |
-| `install/init.ps1` / `init.sh` | Per-repo `bd init` + AGENTS.md |
-| `install/deps.json` | Pinned versions |
-| `install/update-deps.*` | Refresh pins from GitHub/PyPI |
+| `cli/` | Go setup CLI (`fabrik setup|init|check|update-deps|version`), versioned via `cli/package.json` |
+| `install/setup.ps1` / `setup.sh` | Machine install fallback (bd, engram, graphify, MCP) |
+| `install/init.ps1` / `init.sh` | Per-repo fallback (`bd init` + AGENTS.md) |
+| `install/deps.json` | Pinned versions (embedded copy in CLI + sync test) |
+| `install/update-deps.*` | Refresh pins fallback (or `fabrik update-deps`) |
 | `.fabrik/fabrik.ps1` / `fabrik.sh` | Master orchestrator |
 | `.fabrik/loop.ps1` / `loop.sh` | Plan/build OpenCode loops |
 | `src/` | Pi extension (TypeScript) |
@@ -103,6 +126,7 @@ See [PLAYBOOK.md](PLAYBOOK.md) for the full method.
 bun run test          # unit
 bun run test:e2e      # full workflow (needs bd on PATH)
 bun run test:all
+bun run cli:test      # Go CLI (cd cli && go test ./...)
 ```
 
 E2E uses [`e2e/fixtures/sample-app`](e2e/fixtures/sample-app). See [e2e/README.md](e2e/README.md).
