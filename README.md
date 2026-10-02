@@ -1,66 +1,42 @@
 # Fabrik
 
-One cross-platform AI workflow for **Cursor**, **OpenCode**, and **Pi**: grill → land in **Beads** → build with backpressure → remember in **Engram** → map with **Graphify**.
+One cross-platform AI workflow for **Cursor**, **OpenCode**, **Pi**, and **Antigravity**: grill → land in **Beads** → build with backpressure → remember in **Engram** → map with **Graphify**.
 
-Pi extension + OpenCode plugin + shell orchestrators. Models stay in each app's picker.
+Models stay in each app's picker. All orchestration and hub content are handled by the standalone **Go CLI**.
 
-## Quick start (Go CLI, recommended)
+## Quick start (Go CLI)
 
 ```bash
 go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest
-fabrik setup --repo /path/to/your-repo   # interactive; --yes for CI, --dry-run to preview
+cd /path/to/your-repo && fabrik setup   # inits repo first; prompts for apps; --dry-run to preview
 ```
 
 Or download `fabrik-windows-amd64.exe` / `fabrik-linux-amd64` / `fabrik-darwin-arm64`
 from the GitHub release. Version lives in `cli/package.json`; releases are tagged `v<version>`.
 
 ```bash
-fabrik setup [--skip-tool-install] [--skip-engram-setup] [--skip-pi-packages] [--repo PATH]
-fabrik init [PATH] [--skip-checks]   # per-repo .fabrik hub + 3-app wiring
-fabrik check [--json]                # probe bd, engram, graphify, bun, pi, uv
+fabrik setup [--apps cursor,pi,antigravity,opencode] [--repo PATH]  # prompts for apps when omitted
+fabrik init [PATH] [--apps ...]          # per-repo .fabrik hub + selective app wiring
+fabrik check [--json]                   # probe bd, engram, graphify, pi, uv
 fabrik update-deps --deps install/deps.json  # refresh pins from GitHub/PyPI
 fabrik version
 ```
 
 Dev: `cd cli && go test ./...`. Release targets: windows/amd64, linux/amd64, darwin/arm64.
 
-## Quick start (shell scripts)
+## Per repo (Go CLI)
 
-Shell scripts in `install/` remain as fallback:
-
-### Machine (once)
-
-**Windows:**
-```powershell
-cd D:\projects\fabrik
-.\install\setup.ps1
-```
-
-**macOS / Linux:**
 ```bash
-cd /path/to/fabrik
-chmod +x install/setup.sh install/init.sh
-./install/setup.sh
+fabrik init [/path/to/your-repo]      # thin .fabrik hub + selective app wiring (Cursor/OpenCode/Pi/Antigravity)
+fabrik show <key>                  # hub content: workflow, readme, prompt <plan|build>, skill <name>, agent <name>
+fabrik list <skills|agents|all>    # what `fabrik show` can print
+fabrik run [--auto -p "goals"]     # align → plan → build
+fabrik loop <plan|build> [--max N] # plan once, or build until no ready issues
+fabrik migrate --prune [--dry-run] # delete legacy generated dumps (keeps config.yaml, docs/, specs/)
 ```
 
-Restart Cursor, OpenCode, and Pi.
-
-### Per repo
-
-**Windows:**
-```powershell
-.\install\init.ps1 D:\path\to\your-repo
-```
-
-**macOS / Linux:**
-```bash
-./install/init.sh /path/to/your-repo
-```
-
-Or from inside a repo with Fabrik checked in:
-```bash
-./.fabrik/setup.sh    # or setup.ps1 on Windows
-```
+`.fabrik/` on disk holds only `config.yaml` + `docs/` + `specs/`. All other hub
+content is embedded in the CLI and printed via `fabrik show` — no shell scripts or external dependencies.
 
 ## Session loop (all apps)
 
@@ -72,9 +48,10 @@ Or from inside a repo with Fabrik checked in:
 
 ## AFK factory (OpenCode)
 
-```powershell
-.\.fabrik\fabrik.ps1          # Windows: grill → plan → build
-./.fabrik/fabrik.sh           # Unix
+```bash
+fabrik run --auto -p "your goals"  # grill → plan → build, non-interactive
+fabrik loop plan                   # plan wave only, then review before build
+fabrik loop build --max 5          # build wave, capped at 5 iterations
 ```
 
 ## Stack
@@ -90,43 +67,19 @@ Pinned in [`install/deps.json`](install/deps.json):
 
 Beads owns tasks. Engram owns memory. Do not use `bd remember` for the same facts.
 
-## Pi package
-
-```bash
-pi install git:https://github.com/ur-wesley/fabrik.git
-```
-
-| Command / Tool | Description |
-|----------------|-------------|
-| `/fabrik-init` | `bd init` + `.fabrik/config.yaml` |
-| `/fabrik-status` | Beads counts + RTK/model info |
-| `/fabrik-plan` | Land PRD gaps as `bd create` issues |
-| `fabrik_next_task` | `bd ready --claim` |
-| `fabrik_complete_task` | `bd close` + optional commit |
-
 ## Files
 
 | Path | Role |
 |------|------|
-| `cli/` | Go setup CLI (`fabrik setup|init|check|update-deps|version`), versioned via `cli/package.json` |
-| `install/setup.ps1` / `setup.sh` | Machine install fallback (bd, engram, graphify, MCP) |
-| `install/init.ps1` / `init.sh` | Per-repo fallback (`bd init` + AGENTS.md) |
+| `cli/` | Go CLI (`fabrik setup|init|check|update-deps|version|show|list|run|loop|migrate`), versioned via `cli/package.json` |
 | `install/deps.json` | Pinned versions (embedded copy in CLI + sync test) |
-| `install/update-deps.*` | Refresh pins fallback (or `fabrik update-deps`) |
-| `.fabrik/fabrik.ps1` / `fabrik.sh` | Master orchestrator |
-| `.fabrik/loop.ps1` / `loop.sh` | Plan/build OpenCode loops |
-| `src/` | Pi extension (TypeScript) |
-| `.opencode/plugins/fabrik.ts` | Wave runner + batched commits |
+| `install/templates/` | Template sources embedded in the CLI (`fabrik show`, `fabrik init`) |
 
 See [PLAYBOOK.md](PLAYBOOK.md) for the full method.
 
 ## Tests
 
 ```bash
-bun run test          # unit
-bun run test:e2e      # full workflow (needs bd on PATH)
-bun run test:all
-bun run cli:test      # Go CLI (cd cli && go test ./...)
+cd cli && go test ./...
+cd cli && go build ./cmd/fabrik
 ```
-
-E2E uses [`e2e/fixtures/sample-app`](e2e/fixtures/sample-app). See [e2e/README.md](e2e/README.md).

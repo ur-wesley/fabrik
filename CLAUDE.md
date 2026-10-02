@@ -20,7 +20,7 @@ bd close <id>         # Complete work
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 - Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- Beads owns tasks/todos only. Use Engram (`mem_save`, `mem_session_summary`) for persistent memory — do NOT use `bd remember` for decisions or MEMORY.md files
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 
@@ -60,17 +60,22 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+cd cli && go test ./...
+cd cli && go vet ./...
+cd cli && go build ./cmd/fabrik
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Fabrik is a standalone Go CLI (`cli/cmd/fabrik`) providing cross-platform AI agent workflows (Cursor, OpenCode, Pi, Antigravity).
+Hub assets are embedded in the CLI binary and rendered on demand via `fabrik show <key>`. On disk, `.fabrik/` contains only `config.yaml`, `docs/`, and `specs/`.
+
+## Conventions & Patterns
+
+- Pure Go CLI architecture in `cli/`.
+- Issues live in Beads (`bd`). Memory lives in Engram (`mem_save`, `mem_session_summary`).
+- ADHD-friendly output: next action first, numbered steps, Done/Next at end.
 
 ## Conventions & Patterns
 

@@ -6,19 +6,16 @@ Structured AI workflow for Cursor, OpenCode, and Pi. One session loop everywhere
 
 ## 1. Skills
 
-Install via `npx` (done by `.fabrik/setup.*`):
-
-```bash
-npx -y skills add mattpocock/skills --agent opencode
-```
+Installed by `fabrik setup` (or added per-app):
 
 | Step | Skill | Command | Output |
 |------|-------|---------|--------|
 | Align | `grill-with-docs` | `/grill-with-docs` | Stress-test plan, update `.fabrik/CONTEXT.md` |
 | PRD | `to-prd` | `/to-prd` | `.fabrik/docs/PRD.md` |
-| Land | `to-issues` | `/to-issues` | `bd create` issues (not markdown files) |
+| Plan | plan agent | (default session) | `.fabrik/specs/<slug>.md` for review |
+| Land | `to-issues` / planner | after APPROVE | `bd create` issues (not markdown backlog files) |
 | Build | `tdd` | `/tdd` | Vertical slices only |
-| Style | `caveman` | `/caveman` | Minimal agent output |
+| Style | `i-have-adhd` | `/i-have-adhd` | ADHD-friendly output: next action first, numbered steps, Done/Next |
 
 ---
 
@@ -30,54 +27,44 @@ project-root/
 ├── .fabrik/
 │   ├── docs/PRD.md
 │   ├── specs/
-│   ├── styleguide/STYLEGUIDE.md
-│   ├── CONTEXT.md
-│   ├── config.yaml
-│   ├── PROMPT_plan.md
-│   ├── PROMPT_build.md
-│   ├── AGENTS.md
-│   ├── fabrik.ps1 / fabrik.sh
-│   └── loop.ps1 / loop.sh
-├── install/                # Machine setup (in Fabrik repo only)
-│   ├── setup.ps1 / setup.sh
-│   ├── init.ps1 / init.sh
-│   └── deps.json
-└── src/
+│   └── config.yaml
+├── cli/                    # Standalone Go CLI
+└── install/                # Pinned dependencies & templates
 ```
 
-Tasks live in Beads. `.fabrik/` holds specs, prompts, and orchestration — not a second backlog.
+Tasks live in Beads. `.fabrik/` holds specs, PRDs, and config — hub content is served directly by the Go CLI (`fabrik show`).
 
 ---
 
 ## 3. Session loop
 
 1. **Orient** — Engram + optional Graphify.
-2. **Align** — Grill, optional PRD.
-3. **Land** — `bd create`, `bd dep add`.
-4. **Build** — `bd ready` → claim → backpressure → `bd close`.
+2. **Plan** — plan agent writes `.fabrik/specs/` + chat; user APPROVE or REVIEW.
+3. **Land** — after APPROVE: planner runs `bd create`, `bd dep add` (skip if issue exists).
+4. **Build** — orchestrator: builder + tester → `bd ready` → claim → backpressure → `bd close`.
 5. **Remember** — Engram `mem_save`, `mem_session_summary`.
 
 ### AFK orchestrator
 
-- Windows: `.\.fabrik\fabrik.ps1`
-- Unix: `./.fabrik/fabrik.sh`
+- Run workflow: `fabrik run [--auto -p "goals"]`
+- Run loops: `fabrik loop plan` / `fabrik loop build [--max N]`
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant Orch as Orchestrator
+    participant Orch as Go CLI (fabrik)
     participant OC as OpenCode
     participant BD as Beads
 
-    Dev->>Orch: fabrik.ps1
+    Dev->>Orch: fabrik run
     Orch->>OC: grill TUI
     Dev->>OC: /grill-with-docs /to-prd /exit
     Orch->>OC: plan loop
+    Dev->>OC: APPROVE
     OC->>BD: bd create + bd dep add
     loop until bd ready empty
         Orch->>OC: build loop
         OC->>BD: claim + close issue
-        Orch->>Orch: wave commit
     end
 ```
 
@@ -85,20 +72,17 @@ sequenceDiagram
 
 ## 4. Machine setup
 
-Run once per machine from the Fabrik repo:
-
-```powershell
-.\install\setup.ps1
-```
+Run once per machine:
 
 ```bash
-./install/setup.sh
+go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest
+fabrik setup
 ```
 
 Per target repo:
 
-```powershell
-.\install\init.ps1 .
+```bash
+fabrik init .
 ```
 
 ---
@@ -107,8 +91,8 @@ Per target repo:
 
 | Pane | Purpose |
 |------|---------|
-| Factory | `fabrik.ps1` / `fabrik.sh` — watch the loop |
+| Factory | `fabrik loop build` — watch the loop |
 | Control | Manual `git diff`, inspect code |
-| Backpressure | Project test watcher (`bun test --watch`, etc.) |
+| Backpressure | Project test watcher (project-specific) |
 
 Use whatever test/lint/build commands the target repo defines in `AGENTS.md`.

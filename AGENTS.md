@@ -182,30 +182,38 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Fabrik workflow
 
-`.fabrik/` is the overview hub (README, CONTEXT, config, skills, agents). Apps: Cursor, OpenCode, Pi only.
+Run `fabrik show workflow|skill|agent|prompt ...` for hub content — `.fabrik/` on disk holds only `config.yaml` + `docs/` + `specs/`. Apps: Cursor, OpenCode, Pi, Antigravity.
 
 ## Session start
 
-1. ADHD output: next action first, numbered steps, Done/Next at end.
+1. ADHD output: next action first, numbered steps, Done/Next at end. Reply in the same language as the user's input.
 2. Engram: `mem_context` and `mem_search` for prior decisions.
 3. If `graphify-out/graph.json` exists, query the graph before grepping.
 4. Beads: `bd ready` for work with no open blockers.
 
-## Align, land, build
+## Plan, land, build
 
-1. Grill (`grill-with-docs`). Optional `to-prd` into `.fabrik/docs/PRD.md`.
-2. Land in Beads: `bd create`, `bd dep add` when blocked.
-3. Implement with guardrails + TDD: `bd show`, `bd update --claim`, one issue only, minimal diff, ponytail stdlib-first.
-4. Subagents: `orchestrator` routes; `briefer` for app brief, `explore`/`researcher` for study, `planner` for Beads issues, `builder` for 1-2 file edits, `tester` for tests, `reviewer`/`style-smells`/`security` for review.
+1. **Plan** — plan agent (default in OpenCode): explore, write `.fabrik/specs/<slug>.md`, discuss. No Beads yet.
+2. **APPROVE** — orchestrator: planner lands issues (if needed), then builder + tester only.
+3. **REVIEW** — stay in plan; amend spec. No land, no build.
+4. Optional: grill (`grill-with-docs`), `to-prd` into `.fabrik/docs/PRD.md`.
+5. Implement: `bd show`, `bd update --claim`, one issue, minimal diff, ponytail stdlib-first.
+6. Subagents on demand: `explore`/`researcher` for study, `briefer` only for new repos, `reviewer`/`style-smells`/`security` when asked or high-risk.
 
 ## Tokens
 
-- Caveman + RTK on: terse bullets, `rtk exec` for noisy output.
+- i-have-adhd output style only: next action first, numbered steps, Done/Next at end. rtk-usage on: `rtk exec` for noisy output.
 - Never truncate code, paths, commands, errors.
 
 ## Backpressure
 
-Before closing an issue, run test, lint, build from `AGENTS.md`. Fix before `bd close`.
+Quality gates:
+```bash
+cd cli && go test ./...
+cd cli && go vet ./...
+cd cli && go build ./cmd/fabrik
+```
+Fix all failures before `bd close`.
 
 ## Memory
 
