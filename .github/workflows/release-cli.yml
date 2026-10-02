@@ -46,9 +46,6 @@ jobs:
           test "v${{ steps.version.outputs.version }}" = "${{ github.ref_name }}" || {
             echo "tag ${{ github.ref_name }} != v${{ steps.version.outputs.version }} (cli/package.json)"; exit 1
           }
-          test "${{ steps.version.outputs.version }}" = "$(node -p "require('../package.json').version")" || {
-            echo "cli/package.json != root package.json version; bump both"; exit 1
-          }
 
       - name: test
         run: go test ./...

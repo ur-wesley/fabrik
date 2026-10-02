@@ -1,9 +1,0 @@
-{
-  "name": "fabrik-sample-app",
-  "private": true,
-  "scripts": {
-    "test": "bun test src/",
-    "lint": "bun -e \"process.exit(0)\"",
-    "build": "bun -e \"process.exit(0)\""
-  }
-}
