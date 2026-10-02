@@ -54,3 +54,25 @@ func TestInitDryRunViaCLI(t *testing.T) {
 	assert.Empty(t, entries)
 	_ = filepath.Join
 }
+
+func TestResetCmdHelp(t *testing.T) {
+	out, err := run(t, "reset", "--help")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Reset and remove Fabrik configuration")
+	assert.Contains(t, out, "--beads")
+	assert.Contains(t, out, "--dry-run")
+}
+
+func TestResetDryRunViaCLI(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".fabrik"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".fabrik", "config.yaml"), []byte("version: 1\n"), 0o644))
+
+	out, err := run(t, "reset", repo, "--dry-run", "--yes")
+	require.NoError(t, err)
+	assert.Contains(t, out, "would delete .fabrik")
+
+	// Verify dry-run didn't delete the directory
+	assert.DirExists(t, filepath.Join(repo, ".fabrik"))
+}
+

@@ -15,7 +15,7 @@ and initializes repos with the .fabrik overview hub.
 Apps: Cursor, OpenCode, Pi only.`,
 		SilenceUsage: true,
 	}
-	root.AddCommand(newSetupCmd(), newInitCmd(), newCheckCmd(), newUpdateDepsCmd(), newVersionCmd(), newSelfUpdateCmd())
+	root.AddCommand(newSetupCmd(), newInitCmd(), newResetCmd(), newCheckCmd(), newUpdateDepsCmd(), newVersionCmd(), newSelfUpdateCmd(), newShowCmd(), newListCmd(), newRunCmd(), newLoopCmd(), newMigrateCmd())
 	_ = ui.OK
 	return root
 }

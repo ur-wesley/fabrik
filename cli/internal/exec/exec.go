@@ -18,6 +18,9 @@ type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (string, error)
 	// RunIn executes name with args in dir, returning stdout.
 	RunIn(ctx context.Context, dir, name string, args ...string) (string, error)
+	// RunInteractive executes name with args in dir attached to the real
+	// stdio (for TUIs that need a TTY instead of /dev/null stdin).
+	RunInteractive(ctx context.Context, dir, name string, args ...string) (string, error)
 }
 
 // OSRunner is the production Runner.
@@ -34,6 +37,9 @@ func (OSRunner) Run(ctx context.Context, name string, args ...string) (string, e
 }
 
 // RunIn executes the command in dir.
+//
+// Stdin is /dev/null so a prompting child fails fast instead of hanging;
+// callers that need interactivity must use RunInteractive.
 func (OSRunner) RunIn(ctx context.Context, dir, name string, args ...string) (string, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
@@ -59,6 +65,28 @@ func (OSRunner) RunIn(ctx context.Context, dir, name string, args ...string) (st
 			msg = err.Error()
 		}
 		return strings.TrimSpace(out.String()), &Error{Name: name, Msg: msg, Err: err}
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+// RunInteractive executes the command in dir attached to the real stdio,
+// for TUIs that need a TTY. Stdout is still captured and returned.
+func (OSRunner) RunInteractive(ctx context.Context, dir, name string, args ...string) (string, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	cmd.Stdin = os.Stdin
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return strings.TrimSpace(out.String()), &Error{Name: name, Msg: err.Error(), Err: err}
 	}
 	return strings.TrimSpace(out.String()), nil
 }
@@ -128,6 +156,11 @@ func (f *Fake) RunIn(_ context.Context, dir, name string, args ...string) (strin
 		return OSRunner{}.Run(context.Background(), name, args...)
 	}
 	return "", &Error{Name: name, Msg: "unscripted call: " + k}
+}
+
+// RunInteractive records the call like RunIn (tests never need a real TTY).
+func (f *Fake) RunInteractive(_ context.Context, dir, name string, args ...string) (string, error) {
+	return f.RunIn(context.Background(), dir, name, args...)
 }
 
 // Called reports whether a call prefix was invoked.
