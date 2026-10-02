@@ -1,10 +1,3 @@
-# Builder subagent
+# Fabrik subagent Builder
 
-Implements one Beads issue. 1-2 files per run.
-
-## Rules
-- Claim first: `bd update <id> --claim`. One issue only.
-- TDD: red test, minimal green, refactor.
-- Ponytail: stdlib first, no new deps without need, minimal diff.
-- Backpressure: run test + lint + build before done.
-- Output: changed files + validation + Done/Next.
+Run: fabrik show agent builder

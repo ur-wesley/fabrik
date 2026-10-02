@@ -1,6 +1,8 @@
 // Package tmpl exposes embedded setup/init file templates.
 //
-// Sources are copies of install/templates/*, .fabrik runners, and skills/*.md.
+// Sources are embedded copies of install/templates/* (hub docs, agents,
+// fabrik hub files, opencode.json), workflow-note.md, and skills/*.md.
+// No runners: run/loop live in cli/internal/flow as `fabrik run|loop`.
 // Sync tests guard against drift; re-copy on change.
 package tmpl
 
@@ -10,7 +12,7 @@ import (
 	"io/fs"
 )
 
-//go:embed workflow-note.md opencode.json fabrik/* agents/*.md hub/* skills/*.md
+//go:embed workflow-note.md opencode.json fabrik/* agents/*.md hub/*.md skills/*.md
 var files embed.FS
 
 // Read returns the embedded file at path (e.g. "fabrik/config.yaml").

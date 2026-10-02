@@ -15,3 +15,8 @@ When active, shape all output for low working-memory load.
 5. **Time estimates**: give specific estimate per step (e.g. ~2 min).
 6. **Visible wins**: end with Done / Next checklist.
 7. **Short**: bullets, fragments. No greetings, no apologies.
+8. **Same language**: reply in the same language as the user's input (chat and `.fabrik/specs/`). Code, paths, commands, and symbols stay as in the repo.
+
+## Workflow
+9. **Plan first**: plan agent writes `.fabrik/specs/` + chat; user reviews. Plan body is not fluff.
+10. **Gate** (`agents/cta.md`): APPROVE → orchestrator lands (planner) + builder + tester. REVIEW amends spec. STOP pauses.

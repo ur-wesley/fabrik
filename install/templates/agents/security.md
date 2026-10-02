@@ -7,4 +7,4 @@ Security audit. Read-only. No fixes, no commits.
 - Check: input validation, injection (SQL/command/XSS), auth/authz, secrets in code, unsafe deserial, SSRF, error leaks.
 - Severity per finding: Critical/High/Medium/Low with file:line.
 - If clean, report "No security concerns identified."
-- Output: findings + severity + fix hint + pass/fail. Terse.
+- Output: findings + severity + fix hint + pass/fail + Done/Next. Terse.

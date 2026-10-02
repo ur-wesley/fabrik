@@ -1,25 +1,3 @@
----
-description: Fabrik skill rtk-usage
-alwaysApply: false
----
+# Fabrik skill rtk-usage
 
----
-name: rtk-usage
-description: Token-killing command optimization skill for running shell commands with compressed, noise-free outputs.
----
-
-# RTK (Rust Token Killer) & Terminal Compression Protocol
-
-Optimize terminal command execution to preserve LLM context window.
-
-## Compression Strategies
-1. **Command Output Filtering**: Strip progress bars, ANSI color codes, verbose download logs, and success notices.
-2. **Noise Reduction Rules**:
-   - `git`: Use `--oneline`, `--stat`, or compact flags for git commands.
-   - `npm / bun / pnpm`: Suppress spinner and verbose package resolution logs (`--quiet` or `--no-progress`).
-   - `tests`: Show failing test tracebacks and summary counters only; suppress passing test lists.
-   - `builds`: Focus exclusively on errors and warnings.
-3. **Automatic Wrapping**:
-   - When running terminal commands via bash/shell tool, structure commands to pipe through rtk or compact formatters when available.
-   - Truncate large outputs to essential diagnostic lines.
-
+Run: fabrik show skill rtk-usage
