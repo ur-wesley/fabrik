@@ -20,6 +20,10 @@ func TestLoad(t *testing.T) {
 	assert.NotEmpty(t, d.Agents)
 	assert.NotEmpty(t, d.Skills)
 	assert.NotEmpty(t, d.Subagents)
+	// cli-dk8: shared CTA snippet must stay pinned so `fabrik init`
+	// installs it (thin: show-shims, full: .fabrik/agents/cta.md).
+	assert.Contains(t, d.Subagents, "cta")
+	assert.Contains(t, d.Subagents, "plan")
 	// six pinned assets per binary tool
 	assert.Len(t, d.Beads.Assets, 6)
 	assert.Len(t, d.Engram.Assets, 6)

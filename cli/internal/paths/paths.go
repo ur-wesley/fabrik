@@ -4,7 +4,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 )
 
 // Home returns the user home directory.
@@ -19,24 +19,37 @@ func BinDir() (string, error) {
 	return filepath.Join(h, ".local", "bin"), nil
 }
 
-// GraphifySkills are the 3 app skill destinations (Cursor/OpenCode/Pi only).
-func GraphifySkills() ([]string, error) {
+// GraphifySkills returns skill destinations for the specified apps (or all supported apps if empty).
+func GraphifySkills(selectedApps ...string) ([]string, error) {
 	h, err := Home()
 	if err != nil {
 		return nil, err
 	}
-	if runtime.GOOS == "windows" {
-		return []string{
-			filepath.Join(h, ".cursor", "rules", "graphify.mdc"),
-			filepath.Join(h, ".config", "opencode", "skills", "graphify.md"),
-			filepath.Join(h, ".pi", "agent", "skills", "graphify.md"),
-		}, nil
+	appFilter := make(map[string]bool)
+	for _, a := range selectedApps {
+		appFilter[strings.ToLower(strings.TrimSpace(a))] = true
 	}
-	return []string{
-		filepath.Join(h, ".cursor", "rules", "graphify.mdc"),
-		filepath.Join(h, ".config", "opencode", "skills", "graphify.md"),
-		filepath.Join(h, ".pi", "agent", "skills", "graphify.md"),
-	}, nil
+	match := func(app string) bool {
+		if len(appFilter) == 0 {
+			return true
+		}
+		return appFilter[app]
+	}
+
+	var dests []string
+	if match("cursor") {
+		dests = append(dests, filepath.Join(h, ".cursor", "rules", "graphify.mdc"))
+	}
+	if match("opencode") {
+		dests = append(dests, filepath.Join(h, ".config", "opencode", "skills", "graphify.md"))
+	}
+	if match("pi") {
+		dests = append(dests, filepath.Join(h, ".pi", "agent", "skills", "graphify.md"))
+	}
+	if match("antigravity") {
+		dests = append(dests, filepath.Join(h, ".gemini", "antigravity", "skills", "graphify", "SKILL.md"))
+	}
+	return dests, nil
 }
 
 // WorkflowNotes are (path, cursorFrontmatter) destinations for the note.
@@ -45,17 +58,31 @@ type WorkflowNote struct {
 	Frontmatter bool
 }
 
-// WorkflowNoteDests returns the 3 personal workflow-note destinations.
-func WorkflowNoteDests() ([]WorkflowNote, error) {
+// WorkflowNoteDests returns personal workflow-note destinations for the specified apps (or all supported if empty).
+func WorkflowNoteDests(selectedApps ...string) ([]WorkflowNote, error) {
 	h, err := Home()
 	if err != nil {
 		return nil, err
 	}
-	return []WorkflowNote{
-		{Path: filepath.Join(h, ".cursor", "rules", "ai-workflow.mdc"), Frontmatter: true},
-		{Path: filepath.Join(h, ".config", "opencode", "AGENTS.md")},
-		{Path: filepath.Join(h, ".pi", "agent", "AGENTS.md")},
-	}, nil
+	appFilter := make(map[string]bool)
+	for _, a := range selectedApps {
+		appFilter[strings.ToLower(strings.TrimSpace(a))] = true
+	}
+	match := func(app string) bool {
+		if len(appFilter) == 0 {
+			return true
+		}
+		return appFilter[app]
+	}
+
+	var dests []WorkflowNote
+	if match("cursor") {
+		dests = append(dests, WorkflowNote{Path: filepath.Join(h, ".cursor", "rules", "ai-workflow.mdc"), Frontmatter: true})
+	}
+	if match("pi") {
+		dests = append(dests, WorkflowNote{Path: filepath.Join(h, ".pi", "agent", "AGENTS.md")})
+	}
+	return dests, nil
 }
 
 // CursorFrontmatter is the .mdc header for Cursor rule files.

@@ -1,3 +1,9 @@
+apps:
+  - cursor
+  - pi
+  - antigravity
+  - opencode
+
 agent: pi
 
 models:
@@ -5,19 +11,17 @@ models:
 
 session:
   auto_lock: true
-  auto_commit: true
+  auto_commit: false
 
 tools:
   rtk: true
   engram: true
   graphify: true
   beads: true
-  caveman: true
   ponytail: true
 
 skills:
   - i-have-adhd
-  - caveman
   - ponytail
   - rtk-usage
   - tdd
@@ -26,8 +30,10 @@ skills:
   - grill-with-docs
   - to-prd
   - to-issues
+  - to-backlog
 
 subagents:
+  - plan
   - orchestrator
   - explore
   - researcher
@@ -38,3 +44,4 @@ subagents:
   - reviewer
   - style-smells
   - security
+  - backlog

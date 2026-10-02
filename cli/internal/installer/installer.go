@@ -10,11 +10,13 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/ur-wesley/fabrik/cli/internal/apps"
 	"github.com/ur-wesley/fabrik/cli/internal/deps"
 	"github.com/ur-wesley/fabrik/cli/internal/download"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
 	"github.com/ur-wesley/fabrik/cli/internal/paths"
 	"github.com/ur-wesley/fabrik/cli/internal/platform"
+	"github.com/ur-wesley/fabrik/cli/internal/repo"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 	"github.com/ur-wesley/fabrik/cli/internal/ui"
 )
@@ -27,6 +29,7 @@ type Config struct {
 	RepoPath        string
 	Yes             bool // --yes: skip interactive confirms
 	DryRun          bool // print actions only
+	Apps            []string
 }
 
 // Deps are the injectable seams (fakes in tests).
@@ -39,6 +42,10 @@ type Deps struct {
 	CopyGoBin func(goExe, dest string) error
 	// InitRepo runs per-repo init for --repo. Defaults to initer via exec of init logic.
 	InitRepo func(repoPath string) error
+	// Confirm asks a yes/no question. Defaults to ui.Confirm.
+	Confirm func(question string, yes bool) bool
+	// SelectApps prompts user for apps. Defaults to ui.SelectApps.
+	SelectApps func(defaults []string, yes bool) ([]string, error)
 }
 
 func (d *Deps) defaults() {
@@ -53,6 +60,12 @@ func (d *Deps) defaults() {
 	}
 	if d.CopyGoBin == nil {
 		d.CopyGoBin = copyFile
+	}
+	if d.Confirm == nil {
+		d.Confirm = ui.Confirm
+	}
+	if d.SelectApps == nil {
+		d.SelectApps = ui.SelectApps
 	}
 }
 
@@ -82,8 +95,32 @@ func Setup(ctx context.Context, cfg Config, d Deps) error {
 		return err
 	}
 	out := d.Out
+
+	var selectedApps []string
+	if len(cfg.Apps) > 0 {
+		var err error
+		selectedApps, err = apps.Normalize(cfg.Apps)
+		if err != nil {
+			return err
+		}
+	} else if d.SelectApps != nil && !cfg.Yes {
+		var err error
+		selectedApps, err = d.SelectApps(apps.All, cfg.Yes)
+		if err != nil {
+			return err
+		}
+		selectedApps, err = apps.Normalize(selectedApps)
+		if err != nil {
+			return err
+		}
+	} else {
+		selectedApps = append([]string(nil), apps.All...)
+	}
+	cfg.Apps = selectedApps
+
 	fmt.Fprintf(out, "%s\n", ui.OK.Render("Fabrik machine setup"))
 	fmt.Fprintf(out, "Deps: beads %s, engram %s, graphify %s\n", pins.Beads.Tag, pins.Engram.Tag, pins.Graphify.Version)
+	fmt.Fprintf(out, "Apps: %s\n", apps.FormatList(selectedApps))
 
 	if err := ensureBinDir(out, cfg.DryRun); err != nil {
 		return err
@@ -94,34 +131,54 @@ func Setup(ctx context.Context, cfg Config, d Deps) error {
 	if err := installEngram(ctx, out, d, pins, cfg); err != nil {
 		return err
 	}
-	if err := installGraphify(ctx, out, d, pins, cfg); err != nil {
+	if err := initCurrentRepo(out, cfg, d); err != nil {
 		return err
 	}
-	if err := installPiPackages(ctx, out, d, pins, cfg); err != nil {
+	if err := installGraphify(ctx, out, d, pins, cfg, selectedApps); err != nil {
 		return err
 	}
-	if err := installWorkflowNote(out, cfg); err != nil {
+	if err := installPiPackages(ctx, out, d, pins, cfg, selectedApps); err != nil {
 		return err
 	}
-	if err := setupEngramAgents(ctx, out, d, cfg); err != nil {
+	if err := installWorkflowNote(out, cfg, selectedApps); err != nil {
 		return err
 	}
-	if err := setupBeadsAgents(ctx, out, d); err != nil {
+	if err := setupEngramAgents(ctx, out, d, cfg, selectedApps); err != nil {
 		return err
 	}
-	if cfg.RepoPath != "" {
-		header(out, "Initializing repo: "+cfg.RepoPath)
-		if cfg.DryRun {
-			fmt.Fprintf(out, "dry-run: init %s\n", cfg.RepoPath)
-		} else if d.InitRepo != nil {
-			if err := d.InitRepo(cfg.RepoPath); err != nil {
-				return err
-			}
-		}
+	if err := setupBeadsAgents(ctx, out, d, selectedApps); err != nil {
+		return err
 	}
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, ui.OK.Render("Done."))
-	fmt.Fprintln(out, "Restart Cursor, OpenCode, and Pi so MCP and rules reload.")
+	fmt.Fprintf(out, "Restart %s so MCP and rules reload.\n", apps.FormatList(selectedApps))
+	return nil
+}
+
+func initCurrentRepo(out io.Writer, cfg Config, d Deps) error {
+	repoPath := cfg.RepoPath
+	if repoPath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		repoPath = cwd
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return err
+	}
+	if !repo.IsGitRepo(abs) {
+		fmt.Fprintf(out, "%s\n", ui.Warn.Render("Not a git repository (no .git found). Run `git init` first — Fabrik/Beads work best in git repos."))
+	}
+	header(out, "Initializing repo: "+abs)
+	if cfg.DryRun {
+		fmt.Fprintf(out, "dry-run: init %s\n", abs)
+		return nil
+	}
+	if d.InitRepo != nil {
+		return d.InitRepo(abs)
+	}
 	return nil
 }
 
@@ -163,7 +220,7 @@ func installGithubArchive(ctx context.Context, out io.Writer, d Deps, repo, tag,
 	if cfg.SkipToolInstall {
 		return fmt.Errorf("%s missing and --skip-tool-install set", label)
 	}
-	if !ui.Confirm(fmt.Sprintf("Install %s %s?", label, tag), cfg.Yes) {
+	if !d.Confirm(fmt.Sprintf("Install %s %s?", label, tag), cfg.Yes) {
 		fmt.Fprintf(out, "Skipped %s\n", label)
 		return nil
 	}
@@ -222,7 +279,7 @@ func installEngram(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, c
 	}
 	// Prefer `go install` when Go is available (shell parity).
 	if _, err := d.Exec.LookPath("go"); err == nil {
-		if !cfg.DryRun && ui.Confirm(fmt.Sprintf("Install Engram %s via go install?", pins.Engram.Tag), cfg.Yes) {
+		if !cfg.DryRun && d.Confirm(fmt.Sprintf("Install Engram %s via go install?", pins.Engram.Tag), cfg.Yes) {
 			header(out, fmt.Sprintf("Installing Engram %s via go install", pins.Engram.Tag))
 			module := fmt.Sprintf("%s@%s", pins.Engram.GoModule, pins.Engram.Tag)
 			if _, err := d.Exec.Run(ctx, "go", "install", module); err == nil {
@@ -255,19 +312,27 @@ func installEngram(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, c
 	return installGithubArchive(ctx, out, d, repo, tag, asset, binary, "Engram", cfg)
 }
 
-func installGraphify(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, cfg Config) error {
-	header(out, "Installing Graphify skill (Cursor, OpenCode, Pi only)")
-	dests, err := paths.GraphifySkills()
+func installGraphify(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, cfg Config, selectedApps []string) error {
+	header(out, fmt.Sprintf("Installing Graphify skill (%s only)", apps.FormatList(selectedApps)))
+	dests, err := paths.GraphifySkills(selectedApps...)
 	if err != nil {
 		return err
 	}
-	if cfg.DryRun {
-		for _, dst := range dests {
-			fmt.Fprintf(out, "dry-run: write %s\n", dst)
+	var missing []string
+	for _, dst := range dests {
+		if fileExists(dst) {
+			fmt.Fprintf(out, "%s already present\n", dst)
+			continue
 		}
-	} else {
-		if !ui.Confirm("Download Graphify skill file?", cfg.Yes) {
-			fmt.Fprintln(out, "Skipped Graphify skill")
+		missing = append(missing, dst)
+	}
+	if len(missing) > 0 {
+		if cfg.DryRun {
+			for _, dst := range missing {
+				fmt.Fprintf(out, "dry-run: write %s\n", dst)
+			}
+		} else if !cfg.Yes {
+			fmt.Fprintln(out, "Graphify skill files skipped (pass --yes to install missing)")
 		} else {
 			tmp, err := d.Download(ctx, pins.Graphify.SkillURL)
 			if err != nil {
@@ -278,7 +343,7 @@ func installGraphify(ctx context.Context, out io.Writer, d Deps, pins deps.Deps,
 			if err != nil {
 				return err
 			}
-			for _, dst := range dests {
+			for _, dst := range missing {
 				if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 					return err
 				}
@@ -300,7 +365,7 @@ func installGraphify(ctx context.Context, out io.Writer, d Deps, pins deps.Deps,
 		fmt.Fprintln(out, ui.Warn.Render(fmt.Sprintf("uv not found; install graphify CLI manually: uv tool install %s==%s", pins.Graphify.Pypi, pins.Graphify.Version)))
 		return nil
 	}
-	if !ui.Confirm(fmt.Sprintf("Install %s==%s with uv?", pins.Graphify.Pypi, pins.Graphify.Version), cfg.Yes) {
+	if !d.Confirm(fmt.Sprintf("Install %s==%s with uv?", pins.Graphify.Pypi, pins.Graphify.Version), cfg.Yes) {
 		return nil
 	}
 	header(out, fmt.Sprintf("Installing %s==%s with uv", pins.Graphify.Pypi, pins.Graphify.Version))
@@ -312,15 +377,15 @@ func installGraphify(ctx context.Context, out io.Writer, d Deps, pins deps.Deps,
 	return err
 }
 
-func installPiPackages(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, cfg Config) error {
-	if cfg.SkipPiPackages {
+func installPiPackages(ctx context.Context, out io.Writer, d Deps, pins deps.Deps, cfg Config, selectedApps []string) error {
+	if cfg.SkipPiPackages || !apps.Contains(selectedApps, apps.Pi) {
 		return nil
 	}
 	if _, err := d.Exec.LookPath("pi"); err != nil {
 		fmt.Fprintln(out, "pi not on PATH; skip pi package install")
 		return nil
 	}
-	if !ui.Confirm("Install Pi MCP adapter?", cfg.Yes) {
+	if !d.Confirm("Install Pi MCP adapter?", cfg.Yes) {
 		return nil
 	}
 	header(out, "Installing Pi MCP adapter")
@@ -332,19 +397,28 @@ func installPiPackages(ctx context.Context, out io.Writer, d Deps, pins deps.Dep
 	return err
 }
 
-func installWorkflowNote(out io.Writer, cfg Config) error {
+func installWorkflowNote(out io.Writer, cfg Config, selectedApps []string) error {
 	header(out, "Installing personal workflow note")
-	dests, err := paths.WorkflowNoteDests()
+	dests, err := paths.WorkflowNoteDests(selectedApps...)
 	if err != nil {
 		return err
 	}
 	note := tmpl.WorkflowNote()
+	skippedHint := false
 	for _, dst := range dests {
+		if fileExists(dst.Path) {
+			fmt.Fprintf(out, "%s already present\n", dst.Path)
+			continue
+		}
 		if cfg.DryRun {
 			fmt.Fprintf(out, "dry-run: write %s\n", dst.Path)
 			continue
 		}
-		if !ui.Confirm("Write "+dst.Path+"?", cfg.Yes) {
+		if !cfg.Yes {
+			if !skippedHint {
+				fmt.Fprintln(out, "Personal workflow notes skipped (pass --yes to write missing)")
+				skippedHint = true
+			}
 			continue
 		}
 		body := note
@@ -362,7 +436,12 @@ func installWorkflowNote(out io.Writer, cfg Config) error {
 	return nil
 }
 
-func setupEngramAgents(ctx context.Context, out io.Writer, d Deps, cfg Config) error {
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func setupEngramAgents(ctx context.Context, out io.Writer, d Deps, cfg Config, selectedApps []string) error {
 	if cfg.SkipEngramSetup {
 		return nil
 	}
@@ -370,28 +449,58 @@ func setupEngramAgents(ctx context.Context, out io.Writer, d Deps, cfg Config) e
 		fmt.Fprintln(out, "Skipping engram setup")
 		return nil
 	}
-	if !ui.Confirm("Run engram setup for Cursor, OpenCode, Pi?", cfg.Yes) {
+	var targetApps []string
+	for _, a := range selectedApps {
+		if a == apps.Cursor || a == apps.Pi || a == apps.Antigravity {
+			targetApps = append(targetApps, a)
+		}
+	}
+	if len(targetApps) == 0 {
 		return nil
 	}
-	header(out, "Running engram setup for Cursor, OpenCode, Pi")
+	if !d.Confirm(fmt.Sprintf("Run engram setup for %s?", apps.FormatList(targetApps)), cfg.Yes) {
+		return nil
+	}
+	header(out, fmt.Sprintf("Running engram setup for %s (OpenCode: per-repo via fabrik init)", apps.FormatList(targetApps)))
 	if cfg.DryRun {
-		fmt.Fprintln(out, "dry-run: engram setup cursor|opencode|pi")
+		fmt.Fprintf(out, "dry-run: engram setup %s\n", strings.Join(targetApps, "|"))
 		return nil
 	}
-	for _, app := range []string{"cursor", "opencode", "pi"} {
-		if _, err := d.Exec.Run(ctx, "engram", "setup", app); err != nil {
-			return fmt.Errorf("engram setup %s: %w", app, err)
+	for _, app := range targetApps {
+		binaryToCheck := app
+		targetArg := app
+		if app == apps.Antigravity {
+			binaryToCheck = "agy"
+			targetArg = "antigravity-cli"
+		}
+		if _, err := d.Exec.LookPath(binaryToCheck); err != nil {
+			if app == apps.Antigravity {
+				if _, err2 := d.Exec.LookPath("antigravity"); err2 != nil {
+					fmt.Fprintf(out, "%s not on PATH; skipping engram setup for %s\n", binaryToCheck, app)
+					continue
+				}
+			} else {
+				fmt.Fprintf(out, "%s not on PATH; skipping engram setup for %s\n", binaryToCheck, app)
+				continue
+			}
+		}
+		// Best-effort like the shell scripts (|| true) and setupBeadsAgents.
+		if _, err := d.Exec.Run(ctx, "engram", "setup", targetArg); err != nil {
+			fmt.Fprintln(out, ui.Warn.Render(fmt.Sprintf("engram setup %s: %v", targetArg, err)))
 		}
 	}
 	return nil
 }
 
-func setupBeadsAgents(ctx context.Context, out io.Writer, d Deps) error {
+func setupBeadsAgents(ctx context.Context, out io.Writer, d Deps, selectedApps []string) error {
 	if _, err := d.Exec.LookPath("bd"); err != nil {
 		return nil
 	}
-	header(out, "Running bd setup (Cursor, OpenCode only)")
-	for _, app := range []string{"cursor", "opencode"} {
+	if !apps.Contains(selectedApps, apps.Cursor) {
+		return nil
+	}
+	header(out, "Running bd setup (Cursor only; OpenCode: per-repo via fabrik init)")
+	for _, app := range []string{"cursor"} {
 		// Best-effort like the shell scripts (|| true).
 		_, _ = d.Exec.Run(ctx, "bd", "setup", app)
 	}

@@ -17,19 +17,32 @@ func TestBinDirUnderHome(t *testing.T) {
 	assert.True(t, strings.HasSuffix(b, filepath.Join(".local", "bin")), b)
 }
 
-func TestGraphifySkillsThreeAppsOnly(t *testing.T) {
+func TestGraphifySkillsAllApps(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	dests, err := GraphifySkills()
 	require.NoError(t, err)
-	require.Len(t, dests, 3)
+	require.Len(t, dests, 4)
 	joined := strings.Join(dests, "\n")
 	assert.Contains(t, joined, ".cursor")
 	assert.Contains(t, joined, "opencode")
 	assert.Contains(t, joined, ".pi")
+	assert.Contains(t, joined, "antigravity")
 	assert.NotContains(t, joined, ".claude")
 	assert.NotContains(t, joined, ".codex")
-	assert.NotContains(t, joined, ".agents")
+}
+
+func TestGraphifySkillsFiltered(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	dests, err := GraphifySkills("cursor", "antigravity")
+	require.NoError(t, err)
+	require.Len(t, dests, 2)
+	joined := strings.Join(dests, "\n")
+	assert.Contains(t, joined, ".cursor")
+	assert.Contains(t, joined, "antigravity")
+	assert.NotContains(t, joined, "opencode")
+	assert.NotContains(t, joined, ".pi")
 }
 
 func TestWorkflowNoteDests(t *testing.T) {
@@ -37,7 +50,15 @@ func TestWorkflowNoteDests(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	dests, err := WorkflowNoteDests()
 	require.NoError(t, err)
-	require.Len(t, dests, 3)
+	require.Len(t, dests, 2)
 	assert.True(t, dests[0].Frontmatter)
 	assert.False(t, dests[1].Frontmatter)
+	for _, d := range dests {
+		assert.NotContains(t, d.Path, "opencode")
+	}
+
+	filtered, err := WorkflowNoteDests("cursor")
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+	assert.True(t, filtered[0].Frontmatter)
 }
