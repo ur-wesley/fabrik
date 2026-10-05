@@ -15,6 +15,22 @@ import (
 // Tools probed in stable order.
 var Tools = []string{"bd", "engram", "graphify", "bun", "pi", "uv"}
 
+// OptionalTools never affect OK. Jev is an MCP decision helper, not a PATH
+// binary: it counts as configured only when TYPESAFE_API_KEY is set and the
+// host app enables the `jev` MCP server (local stdio agents only).
+// See skills/jev-loop.md. tools.jev in .fabrik/config.yaml: auto|true|false.
+var OptionalTools = []string{"jev"}
+
+// JevStatus reports the optional Jev decision helper status. It never fails
+// the overall check: "ok" when TYPESAFE_API_KEY is set (MCP server `jev`
+// still required in the host app), "missing (optional)" otherwise.
+func JevStatus() string {
+	if v := os.Getenv("TYPESAFE_API_KEY"); v != "" {
+		return "ok (key set; requires MCP server jev)"
+	}
+	return "missing (optional; set TYPESAFE_API_KEY + enable MCP server jev)"
+}
+
 // Result holds per-tool status.
 type Result struct {
 	Status map[string]string `json:"-"`
@@ -36,6 +52,7 @@ func Run(ctx context.Context, ex exec.Runner) Result {
 		}
 	}
 	r.OK = !fail
+	r.Status["jev"] = JevStatus()
 	if r.Status["bd"] == "ok" {
 		if v, err := ex.Run(ctx, "bd", "version"); err == nil {
 			r.Versions["bd"] = firstLine(v)
@@ -63,13 +80,16 @@ func Print(out io.Writer, r Result) {
 		}
 		fmt.Fprintf(out, "%s: %s\n", t, s)
 	}
+	for _, t := range OptionalTools {
+		fmt.Fprintf(out, "%s: %s\n", t, r.Status[t])
+	}
 	if !r.OK {
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "Missing tools. Run fabrik setup.")
 	}
 }
 
-// PrintJSON renders machine output (shell parity: only tool keys + ok).
+// PrintJSON renders machine output (shell parity: required tool keys + optional jev + ok).
 func PrintJSON(out io.Writer) error {
 	return PrintJSONTo(out, Run(context.Background(), exec.OSRunner{}))
 }
@@ -78,6 +98,9 @@ func PrintJSON(out io.Writer) error {
 func PrintJSONTo(out io.Writer, r Result) error {
 	m := map[string]any{}
 	for _, t := range Tools {
+		m[t] = r.Status[t]
+	}
+	for _, t := range OptionalTools {
 		m[t] = r.Status[t]
 	}
 	m["ok"] = r.OK

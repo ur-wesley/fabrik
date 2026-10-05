@@ -7,6 +7,8 @@
    * Goal, files, steps, proposed Beads issues (text only), risks/non-goals.
 2. Print the full plan in chat. Stop at the CTA gate.
 
+Decisions (jev-loop, optional): only when Jev is configured (MCP server `jev` + `TYPESAFE_API_KEY`, local agents), `jev_choice` may pick the skill when the catalog is large. Otherwise skip silently.
+
 CRITICAL INVARIANTS:
 *   App tools only for reads: `explore` owns code discovery; shell is `fabrik show|list` + read-only `bd list|ready|show` only.
 *   Do NOT `bd create` or `bd dep add`. Landing: single-issue via build (inline create), wave via orchestrator + planner.

@@ -24,6 +24,10 @@ No direct edits, no commits. Routes only after APPROVE.
 - Always: lint/test/build backpressure before `bd close`.
 - Output: routed agents + order + Done/Next. ADHD style. Same language as the user's input.
 
+## Decisions (jev-loop, optional)
+- Only when Jev is configured (MCP server `jev` + `TYPESAFE_API_KEY`, local agents): `jev_score` risk gate before destructive/deploy/wide-refactor waves; `jev_choice` turn-budget gate (continue/retry/stop/ask_user) before expensive retries. Thresholds: Noul ≥ 0.8 proceed with caution, ≤ 0.2 block/escalate, 0.4–0.6 ask user. See `skills/jev-loop.md`.
+- Otherwise skip silently; routing heuristics unchanged.
+
 ## Gate (`agents/cta.md`)
 - **APPROVE orchestrator** → land (if needed) + builder + tester (no commit).
 - **APPROVE / APPROVE build** → user should use build, not me.

@@ -19,11 +19,13 @@ tools:
   graphify: true
   beads: true
   ponytail: true
+  jev: auto # optional decision gates (noul/choice/score/evaluate); auto = use only when MCP server `jev` + TYPESAFE_API_KEY configured, true = require, false = never
 
 skills:
   - i-have-adhd
   - ponytail
   - rtk-usage
+  - jev-loop # optional; only when Jev is configured (see skills/jev-loop.md)
   - tdd
   - diagnose
   - guardrails

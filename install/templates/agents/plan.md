@@ -13,6 +13,10 @@ OpenCode-style plan step. Explore and propose. No code, no Beads until APPROVE.
 - Shell is allowlisted to `fabrik show|list` and read-only `bd list|ready|show` only. No other `bash` calls (matches `opencode.json` plan permissions).
 - If a ready Beads issue already covers the ask: short plan (files + steps), note "skip land on APPROVE".
 
+## Decisions (jev-loop, optional)
+- Only when Jev is configured (MCP server `jev` + `TYPESAFE_API_KEY`, local agents): `jev_choice` for skill pick when the catalog is large, or best-skill-or-none. See `skills/jev-loop.md`.
+- Otherwise skip silently; never block planning on Jev.
+
 ## Spec file (`.fabrik/specs/<slug>.md`)
 Write the same body in chat and in the spec file:
 1. **Goal** — one paragraph

@@ -10,6 +10,7 @@
 | App briefing | app-brief, app-existing, app-scope, app-stack, app-brand (external `ur-wesley/agent-skills`, not vendored; used by briefer/planner via `docs/IDEA/STACK/BRAND.md`) | — |
 | Stack skills | Only when `docs/STACK.md` prescribes them. Never assume. | — |
 | Storage + overview | engram, graphify | MCP + `graphify` skill |
+| Decisions (optional) | jev-loop | `skills/jev-loop.md` — typed gates (`jev_noul`/`choice`/`score`/`evaluate`) only when MCP server `jev` + `TYPESAFE_API_KEY` configured; otherwise skip silently |
 | Todos | beads | `bd` CLI |
 | Future ideas | to-backlog | `skills/to-backlog.md` + `fabrik show agent backlog` |
 

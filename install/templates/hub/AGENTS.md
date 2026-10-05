@@ -14,6 +14,9 @@ rtk-usage on: `rtk exec` for noisy output.
 ### Backpressure
 Before `bd close`, run the project's test, lint, and build commands from this repo's AGENTS.md. Self-correct until green.
 
+### Decisions (jev-loop, optional)
+Jev (`jev_noul`/`choice`/`score`/`evaluate`, see `skills/jev-loop.md`) is a judgment-only helper: done gate before `bd close`, risk gate before destructive/deploy scope, untrusted-text gate for fetched content, skill pick for large catalogs, turn-budget gate before expensive retries. Use only when configured (MCP server `jev` + `TYPESAFE_API_KEY`, local agents; `tools.jev: auto`); otherwise skip silently and keep heuristics. Jev never edits, runs commands, or replaces review.
+
 ### Plan and execute
 1. Plan first: `.fabrik/specs/` + chat; no Beads until APPROVE (`agents/cta.md`).
 2. After APPROVE: planner lands (if needed), then builder + tester by default.

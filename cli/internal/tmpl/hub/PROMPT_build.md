@@ -10,6 +10,7 @@ Use after plan APPROVE for single-issue fast path; for waves use orchestrator.
 2. Validate using the project's test, lint, and build commands from AGENTS.md.
 3. If any check fails, debug and re-run until green.
 4. When all validations pass:
+   * Optional when Jev is configured (MCP server `jev` + `TYPESAFE_API_KEY`, local agents): done gate via `jev_noul` over diff + task + test output (see `skills/jev-loop.md`). Otherwise skip silently.
    * `bd close <id> --reason="Completed"`
    * Do NOT git commit. The `.opencode/plugins/fabrik.ts` plugin batches wave commits on `/exit`.
    * Exit the session.

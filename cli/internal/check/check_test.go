@@ -44,3 +44,27 @@ func TestPrintJSONShape(t *testing.T) {
 	assert.Equal(t, "missing", m["pi"])
 	assert.Equal(t, false, m["ok"])
 }
+
+func TestJevOptionalMissingByDefault(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "")
+	r := Run(context.Background(), &exec.Fake{})
+	assert.Contains(t, r.Status["jev"], "missing (optional")
+	assert.False(t, r.OK) // OK still driven by required tools only
+}
+
+func TestJevOptionalOkWithKey(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	r := Run(context.Background(), &exec.Fake{})
+	assert.Contains(t, r.Status["jev"], "ok")
+	assert.False(t, r.OK) // required tools still missing; jev never flips OK
+}
+
+func TestJevNeverFailsCheck(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "")
+	f := &exec.Fake{
+		Path: map[string]bool{"bd": true, "engram": true, "graphify": true, "bun": true, "pi": true, "uv": true},
+	}
+	r := Run(context.Background(), f)
+	assert.True(t, r.OK)
+	assert.Contains(t, r.Status["jev"], "missing (optional")
+}
