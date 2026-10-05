@@ -4,15 +4,22 @@ One cross-platform AI workflow for **Cursor**, **OpenCode**, **Pi**, and **Antig
 
 Models stay in each app's picker. All orchestration and hub content are handled by the standalone **Go CLI**.
 
-## Quick start (Go CLI)
+## Quick start
 
 ```bash
-go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest
+npm i -g @ur-wesley/fabrik
+# or: bun add -g @ur-wesley/fabrik
+# or: go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest
 cd /path/to/your-repo && fabrik setup   # inits repo first; prompts for apps; --dry-run to preview
 ```
 
-Or download `fabrik-windows-amd64.exe` / `fabrik-linux-amd64` / `fabrik-darwin-arm64`
-from the GitHub release. Version lives in `cli/package.json`; releases are tagged `v<version>`.
+No postinstall script — `npm`/`bun` install the prebuilt binary for your
+platform via `optionalDependencies` (`fabrik` on `PATH` comes from `bin/fabrik.js`).
+
+Or download `fabrik-windows-amd64.exe` / `fabrik-linux-amd64` / `fabrik-linux-arm64` /
+`fabrik-darwin-amd64` / `fabrik-darwin-arm64` from the GitHub release.
+Version lives in `package.json` (mirrored to `cli/package.json` + `npm/*/package.json`
+via `npm run versions:sync`); releases are tagged `v<version>`.
 
 ```bash
 fabrik setup [--apps cursor,pi,antigravity,opencode] [--repo PATH]  # prompts for apps when omitted
@@ -22,7 +29,7 @@ fabrik update-deps --deps install/deps.json  # refresh pins from GitHub/PyPI
 fabrik version
 ```
 
-Dev: `cd cli && go test ./...`. Release targets: windows/amd64, linux/amd64, darwin/arm64.
+Dev: `cd cli && go test ./...`. Release targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
 
 ## Per repo (Go CLI)
 
@@ -71,7 +78,10 @@ Beads owns tasks. Engram owns memory. Do not use `bd remember` for the same fact
 
 | Path | Role |
 |------|------|
-| `cli/` | Go CLI (`fabrik setup|init|check|update-deps|version|show|list|run|loop|migrate`), versioned via `cli/package.json` |
+| `cli/` | Go CLI (`fabrik setup|init|check|update-deps|version|show|list|run|loop|migrate`), versioned via `cli/package.json` (synced from root) |
+| `bin/fabrik.js` | npm/bun `fabrik` launcher (no postinstall, resolves platform package) |
+| `npm/fabrik-*/` | Per-platform packages with prebuilt binary (`optionalDependencies`) |
+| `scripts/sync-versions.mjs` | Keeps root + `cli/package.json` + `npm/*/package.json` in sync |
 | `install/deps.json` | Pinned versions (embedded copy in CLI + sync test) |
 | `install/templates/` | Template sources embedded in the CLI (`fabrik show`, `fabrik init`) |
 

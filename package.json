@@ -2,9 +2,33 @@
   "name": "@ur-wesley/fabrik",
   "version": "1.0.0",
   "description": "Fabrik: Scoped session orchestrator, low-token YAML config, and task workflow CLI for Cursor, OpenCode, and Pi",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "fabrik": "bin/fabrik.js"
+  },
+  "files": [
+    "bin/fabrik.js",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@ur-wesley/fabrik-win32-x64": "1.0.0",
+    "@ur-wesley/fabrik-linux-x64": "1.0.0",
+    "@ur-wesley/fabrik-linux-arm64": "1.0.0",
+    "@ur-wesley/fabrik-darwin-x64": "1.0.0",
+    "@ur-wesley/fabrik-darwin-arm64": "1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "cli:test": "cd cli && go test ./...",
     "cli:build": "cd cli && go build -trimpath -o fabrik ./cmd/fabrik",
-    "cli:version": "node -p \"require('./package.json').version\""
+    "cli:version": "node -p \"require('./package.json').version\"",
+    "versions:sync": "node scripts/sync-versions.mjs",
+    "versions:check": "node scripts/sync-versions.mjs --check"
   }
 }

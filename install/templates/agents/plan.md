@@ -4,9 +4,13 @@ OpenCode-style plan step. Explore and propose. No code, no Beads until APPROVE.
 
 ## Rules
 - Read-only on `src/*` and project code. Only write `.fabrik/specs/<slug>.md` (one spec per task).
-- Spawn `explore` or `researcher` when needed. No parallel whole-repo dump for a 1-file ask.
-- Inputs: user ask, `.fabrik/docs/PRD.md` or `docs/PRD.md`, open Beads (`bd list --status=open --json`), existing spec if amending.
+- Code discovery belongs to `explore`: spawn `explore` for file listing, code search, and file reads. Do NOT use shell (`dir`, `ls`, `Get-ChildItem`, `cat`, `Get-Content`, etc.) for those tasks. No parallel whole-repo dump for a 1-file ask.
+- Use app-native tools only for your own reads: `read`/`glob`/`grep` for 1-2 already-known files (spec, PRD). Never walk source trees yourself — delegate to `explore`. Spawn `researcher` for external docs/memory.
+- Inputs: user ask, `.fabrik/docs/PRD.md` or `docs/PRD.md`, open Beads (`bd list --status=open --json`), existing spec if amending, plus the `explore` result.
 - Do NOT `bd create`, `bd dep add`, or edit source. Do NOT spawn `planner`, `builder`, `build`, or `orchestrator`.
+
+## Tooling
+- Shell is allowlisted to `fabrik show|list` and read-only `bd list|ready|show` only. No other `bash` calls (matches `opencode.json` plan permissions).
 - If a ready Beads issue already covers the ask: short plan (files + steps), note "skip land on APPROVE".
 
 ## Spec file (`.fabrik/specs/<slug>.md`)

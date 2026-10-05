@@ -11,7 +11,14 @@ bun.lock
 /fabrik.exe
 cli/fabrik
 cli/fabrik.exe
+cli/fabrik-*
 tsconfig.tsbuildinfo
+
+# npm platform binaries are staged in CI (never committed)
+npm/*/bin/fabrik
+npm/*/bin/fabrik.exe
+npm/*/bin/*.sha256
+*.tgz
 
 # Beads / Dolt files (added by bd init)
 .dolt/

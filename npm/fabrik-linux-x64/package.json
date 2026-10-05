@@ -1,0 +1,9 @@
+{
+  "name": "@ur-wesley/fabrik-linux-x64",
+  "version": "1.0.0",
+  "description": "Fabrik CLI binary for linux-x64",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin/fabrik"]
+}

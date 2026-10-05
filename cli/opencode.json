@@ -22,7 +22,14 @@
       "prompt": "# Fabrik agent Plan\n\nRun: fabrik show agent plan\n",
       "permission": {
         "edit": "allow",
-        "bash": "ask",
+        "bash": {
+          "*": "deny",
+          "fabrik show*": "allow",
+          "fabrik list*": "allow",
+          "bd list*": "allow",
+          "bd ready*": "allow",
+          "bd show*": "allow"
+        },
         "task": {
           "*": "deny",
           "explore": "allow",

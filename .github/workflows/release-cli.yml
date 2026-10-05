@@ -1,10 +1,12 @@
-# Release the fabrik Go CLI directly as binaries (no goreleaser).
+# Release the fabrik Go CLI as binaries + npm/bun packages (no postinstall).
 #
-# Trigger: push a tag like v1.0.0 (must match cli/package.json version).
-# Builds 3 targets only: windows/amd64, linux/amd64, darwin/arm64.
-# Version is stamped from cli/package.json via ldflags.
+# Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + npm/*/package.json).
+# Builds 5 targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
+# Version is stamped from package.json via ldflags.
 #
-# Install options:
+# Install options after release:
+#   npm i -g @ur-wesley/fabrik        # npm
+#   bun add -g @ur-wesley/fabrik       # bun
 #   go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@v1.0.0
 #   # or download the binary for your platform from the GitHub release
 name: release-cli
@@ -16,15 +18,18 @@ on:
 
 permissions:
   contents: write
+  id-token: write # npm provenance (trusted publishing). Remove if you only use NPM_TOKEN.
 
 jobs:
   build:
     strategy:
       matrix:
         include:
-          - { goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64 }
-          - { goos: linux, goarch: amd64, ext: "", suffix: linux-amd64 }
-          - { goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64 }
+          - { goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
+          - { goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
+          - { goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
+          - { goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
+          - { goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,14 +42,19 @@ jobs:
           go-version: "1.27"
           cache-dependency-path: cli/go.sum
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: version
         id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('../package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: check tag matches package.json
+      - name: check tag matches all package.json versions
         run: |
+          node ../scripts/sync-versions.mjs --check
           test "v${{ steps.version.outputs.version }}" = "${{ github.ref_name }}" || {
-            echo "tag ${{ github.ref_name }} != v${{ steps.version.outputs.version }} (cli/package.json)"; exit 1
+            echo "tag ${{ github.ref_name }} != v${{ steps.version.outputs.version }} (package.json)"; exit 1
           }
 
       - name: test
@@ -60,6 +70,10 @@ jobs:
             -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
             -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
           sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
+          mkdir -p "../npm/${{ matrix.npmDir }}/bin"
+          cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
+          chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }"
+          ls -l "../npm/${{ matrix.npmDir }}/bin"
 
       - name: upload artifact
         uses: actions/upload-artifact@v4
@@ -83,3 +97,51 @@ jobs:
         with:
           files: dist/fabrik-*
           generate_release_notes: true
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: cli/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: stage npm binaries
+        run: |
+          node scripts/sync-versions.mjs --check
+          mkdir -p npm/fabrik-win32-x64/bin npm/fabrik-linux-x64/bin npm/fabrik-linux-arm64/bin npm/fabrik-darwin-x64/bin npm/fabrik-darwin-arm64/bin
+          cp dist/fabrik-windows-amd64.exe npm/fabrik-win32-x64/bin/fabrik.exe
+          cp dist/fabrik-linux-amd64 npm/fabrik-linux-x64/bin/fabrik
+          cp dist/fabrik-linux-arm64 npm/fabrik-linux-arm64/bin/fabrik
+          cp dist/fabrik-darwin-amd64 npm/fabrik-darwin-x64/bin/fabrik
+          cp dist/fabrik-darwin-arm64 npm/fabrik-darwin-arm64/bin/fabrik
+          chmod +x npm/fabrik-linux-x64/bin/fabrik npm/fabrik-linux-arm64/bin/fabrik npm/fabrik-darwin-x64/bin/fabrik npm/fabrik-darwin-arm64/bin/fabrik
+          ls -R npm
+
+      - name: publish platform packages
+        # Uses NPM_TOKEN if set, else npm trusted publishing (OIDC) via id-token: write.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in fabrik-win32-x64 fabrik-linux-x64 fabrik-linux-arm64 fabrik-darwin-x64 fabrik-darwin-arm64; do
+            echo "== publishing @ur-wesley/$pkg =="
+            npm publish ./npm/$pkg --provenance --access public
+          done
+
+      - name: publish wrapper
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
