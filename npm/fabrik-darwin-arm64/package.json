@@ -1,9 +1,15 @@
 {
   "name": "@ur-wesley/fabrik-darwin-arm64",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fabrik CLI binary for darwin-arm64",
   "license": "MIT",
-  "os": ["darwin"],
-  "cpu": ["arm64"],
-  "files": ["bin/fabrik"]
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/fabrik"
+  ]
 }

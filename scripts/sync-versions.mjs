@@ -1,5 +1,6 @@
 // Keep versions in sync: root package.json is the source of truth.
-// Mirrors into cli/package.json (Go ldflags version) and all npm platform packages
+// Mirrors into cli/package.json (Go ldflags version), cli/internal/version/package.json
+// (embedded fallback) and all npm platform packages
 // (including root optionalDependencies ranges).
 // Usage: node scripts/sync-versions.mjs [--check] [--set X.Y.Z]
 import fs from "node:fs";
@@ -10,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const rootPkgPath = path.join(ROOT, "package.json");
 const cliPkgPath = path.join(ROOT, "cli", "package.json");
+const cliEmbeddedPkgPath = path.join(ROOT, "cli", "internal", "version", "package.json");
 const npmDir = path.join(ROOT, "npm");
 
 const PLATFORMS = [
@@ -80,6 +82,9 @@ function main() {
   const cliPkg = readJson(cliPkgPath);
   ensureVersion("cli/package.json", cliPkg);
 
+  const cliEmbeddedPkg = readJson(cliEmbeddedPkgPath);
+  ensureVersion("cli/internal/version/package.json", cliEmbeddedPkg);
+
   const platPkgs = PLATFORMS.map((plat) => {
     const p = path.join(npmDir, plat, "package.json");
     return { label: `npm/${plat}/package.json`, path: p, pkg: readJson(p) };
@@ -98,6 +103,7 @@ function main() {
 
   writeJson(rootPkgPath, rootPkg);
   writeJson(cliPkgPath, cliPkg);
+  writeJson(cliEmbeddedPkgPath, cliEmbeddedPkg);
   for (const { path: p, pkg } of platPkgs) writeJson(p, pkg);
   console.log(updates.length ? `synced to ${sourceVersion}: ${updates.join(", ")}` : `already in sync (${sourceVersion})`);
 }

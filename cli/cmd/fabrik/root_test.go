@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ur-wesley/fabrik/cli/internal/version"
 )
 
 func run(t *testing.T, args ...string) (string, error) {
@@ -25,7 +26,7 @@ func run(t *testing.T, args ...string) (string, error) {
 func TestVersionCmd(t *testing.T) {
 	out, err := run(t, "version")
 	require.NoError(t, err)
-	assert.Contains(t, out, "fabrik 1.0.0")
+	assert.Contains(t, out, "fabrik "+version.Get())
 	assert.Contains(t, out, "beads")
 	assert.Contains(t, out, "engram")
 }

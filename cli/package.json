@@ -1,6 +1,6 @@
 {
   "name": "@ur-wesley/fabrik-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fabrik setup CLI (Go): machine setup + per-repo init for Cursor, OpenCode, Pi",
   "private": true
 }

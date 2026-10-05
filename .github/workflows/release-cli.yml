@@ -72,7 +72,7 @@ jobs:
           sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
           mkdir -p "../npm/${{ matrix.npmDir }}/bin"
           cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
-          chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }"
+          chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
           ls -l "../npm/${{ matrix.npmDir }}/bin"
 
       - name: upload artifact
