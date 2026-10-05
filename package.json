@@ -3,6 +3,10 @@
   "version": "1.0.1",
   "description": "Fabrik: Scoped session orchestrator, low-token YAML config, and task workflow CLI for Cursor, OpenCode, and Pi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ur-wesley/fabrik"
+  },
   "type": "commonjs",
   "bin": {
     "fabrik": "bin/fabrik.js"

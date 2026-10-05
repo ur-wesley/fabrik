@@ -91,6 +91,18 @@ function main() {
   });
   for (const { label, pkg } of platPkgs) ensureVersion(label, pkg);
 
+  const expectedRepo = "https://github.com/ur-wesley/fabrik";
+  function ensureRepo(label, pkg) {
+    const url = pkg.repository && pkg.repository.url;
+    if (url !== expectedRepo) {
+      problems.push(`${label}: repository.url is ${JSON.stringify(url)} != ${JSON.stringify(expectedRepo)} (required for npm provenance)`);
+      pkg.repository = { type: "git", url: expectedRepo };
+      updates.push(label + " repository");
+    }
+  }
+  ensureRepo("root package.json", rootPkg);
+  for (const { label, pkg } of platPkgs) ensureRepo(label, pkg);
+
   if (check) {
     if (problems.length) {
       console.error("version mismatch:\n  - " + problems.join("\n  - "));
