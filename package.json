@@ -1,6 +1,6 @@
 {
   "name": "@ur-wesley/fabrik",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fabrik: Scoped session orchestrator, low-token YAML config, and task workflow CLI for Cursor, OpenCode, and Pi",
   "license": "MIT",
   "type": "commonjs",
