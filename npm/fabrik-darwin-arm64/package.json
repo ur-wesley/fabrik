@@ -1,6 +1,6 @@
 {
   "name": "@ur-wesley/fabrik-darwin-arm64",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Fabrik CLI binary for darwin-arm64",
   "license": "MIT",
   "repository": {

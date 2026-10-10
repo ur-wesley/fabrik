@@ -1,6 +1,6 @@
 {
   "name": "@ur-wesley/fabrik-linux-x64",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Fabrik CLI binary for linux-x64",
   "license": "MIT",
   "repository": {
