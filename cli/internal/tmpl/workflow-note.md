@@ -34,4 +34,4 @@ Before closing an issue, run the project's test, lint, and build commands from `
 
 ## Apps
 
-Same loop in Cursor, OpenCode, and Pi only. Pick the app that already has the repo open.
+Same loop in Cursor, OpenCode, Pi, and Antigravity. Pick the app that already has the repo open.
