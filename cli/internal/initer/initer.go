@@ -377,6 +377,14 @@ func cursorAgentFile(name, body string) string {
 	return fmt.Sprintf("---\nname: %s\ndescription: %s\nmodel: inherit\nreadonly: %s\n---\n\n%s", name, spec.description, readonly, body)
 }
 
+func antigravityAgentFile(name, body string) string {
+	spec, ok := cursorAgentSpecs[name]
+	if !ok {
+		return fmt.Sprintf("---\nname: %q\ndescription: %q\nmainAgent: true\nsubagent: true\n---\n\n%s", name, "Fabrik subagent "+agentDisplayName(name), body)
+	}
+	return fmt.Sprintf("---\nname: %q\ndescription: %q\nmainAgent: true\nsubagent: true\n---\n\n%s", name, spec.description, body)
+}
+
 // rootAgentsPointer is the 5-line AGENTS.md pointer written by thin init.
 func rootAgentsPointer() string {
 	return "# Agent instructions\n\n## Fabrik workflow\n\nRun `fabrik show workflow` for the full workflow.\n"
@@ -439,6 +447,11 @@ func initThin(out io.Writer, dry bool, abs string, subagents []string, selectedA
 		}
 		if apps.Contains(selectedApps, apps.Cursor) {
 			if err := writeMissing(out, dry, filepath.Join(abs, ".cursor", "agents", a+".md"), cursorAgentFile(a, shim)); err != nil {
+				return err
+			}
+		}
+		if apps.Contains(selectedApps, apps.Antigravity) {
+			if err := writeMissing(out, dry, filepath.Join(abs, ".agents", "agents", a+".md"), antigravityAgentFile(a, shim)); err != nil {
 				return err
 			}
 		}
@@ -554,6 +567,11 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 			return err
 		}
 	}
+	if apps.Contains(selectedApps, apps.Antigravity) {
+		if err := mkdir(out, dry, filepath.Join(abs, ".agents", "agents")); err != nil {
+			return err
+		}
+	}
 	for _, a := range selectableAgents(subagents) {
 		src, err := tmpl.Read("agents/" + a + ".md")
 		if err != nil {
@@ -568,6 +586,14 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 			cursorPath := filepath.Join(abs, ".cursor", "agents", a+".md")
 			if !exists(cursorPath) {
 				if err := write(out, dry, cursorPath, cursorAgentFile(a, src)); err != nil {
+					return err
+				}
+			}
+		}
+		if apps.Contains(selectedApps, apps.Antigravity) {
+			agPath := filepath.Join(abs, ".agents", "agents", a+".md")
+			if !exists(agPath) {
+				if err := write(out, dry, agPath, antigravityAgentFile(a, src)); err != nil {
 					return err
 				}
 			}

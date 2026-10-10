@@ -230,6 +230,7 @@ func TestInitSelectiveAppsAntigravityOnly(t *testing.T) {
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"antigravity"}}, d))
 
 	assert.FileExists(t, filepath.Join(repo, ".agents", "skills", "tdd", "SKILL.md"))
+	assert.FileExists(t, filepath.Join(repo, ".agents", "agents", "plan.md"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
 	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
 	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
