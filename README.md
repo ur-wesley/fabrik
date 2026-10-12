@@ -81,7 +81,7 @@ Beads owns tasks. Engram owns memory. Do not use `bd remember` for the same fact
 | `cli/` | Go CLI (`fabrik setup|init|check|update-deps|version|show|list|run|loop|migrate`), versioned via `cli/package.json` (synced from root) |
 | `bin/fabrik.js` | npm/bun `fabrik` launcher (no postinstall, resolves platform package) |
 | `npm/fabrik-*/` | Per-platform packages with prebuilt binary (`optionalDependencies`) |
-| `scripts/sync-versions.mjs` | Keeps root + `cli/package.json` + `npm/*/package.json` in sync |
+| `scripts/sync-versions.mjs` | Keeps root + `cli/package.json` + `gui/Cargo.toml` + `npm/*/package.json` in sync |
 | `install/deps.json` | Pinned versions (embedded copy in CLI + sync test) |
 | `install/templates/` | Template sources embedded in the CLI (`fabrik show`, `fabrik init`) |
 
