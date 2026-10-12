@@ -1,0 +1,4 @@
+[alias]
+dev = "watch -q -c -w src -w Cargo.toml -w Cargo.lock -i target -i .fabrik -i graph.db -- cargo run"
+dev-check = "watch -q -c -w src -w Cargo.toml -w Cargo.lock -i target -i .fabrik -i graph.db -- cargo check"
+dev-clippy = "watch -q -c -w src -w Cargo.toml -w Cargo.lock -i target -i .fabrik -i graph.db -- cargo clippy"
