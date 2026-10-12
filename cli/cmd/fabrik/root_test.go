@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,16 +28,28 @@ func TestVersionCmd(t *testing.T) {
 	out, err := run(t, "version")
 	require.NoError(t, err)
 	assert.Contains(t, out, "fabrik "+version.Get())
-	assert.Contains(t, out, "beads")
-	assert.Contains(t, out, "engram")
+}
+
+func TestVersionFlag(t *testing.T) {
+	want := "fabrik " + version.Get()
+	out, err := run(t, "--version")
+	require.NoError(t, err)
+	assert.Contains(t, out, want)
+	out, err = run(t, "-v")
+	require.NoError(t, err)
+	assert.Contains(t, out, want)
 }
 
 func TestCheckJSONShape(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
 	out, err := run(t, "check", "--json")
-	require.NoError(t, err)
+	require.Error(t, err)
+	idx := strings.Index(out, "{")
+	require.GreaterOrEqual(t, idx, 0)
 	var m map[string]any
-	require.NoError(t, json.Unmarshal([]byte(out), &m))
-	for _, k := range []string{"bd", "engram", "graphify", "bun", "pi", "uv", "ok"} {
+	require.NoError(t, json.NewDecoder(strings.NewReader(out[idx:])).Decode(&m))
+	for _, k := range []string{"dolt", "dolt_path", "graph", "graph_path", "schema_dolt", "issues", "graph_files"} {
 		assert.Contains(t, m, k)
 	}
 }
@@ -44,12 +57,8 @@ func TestCheckJSONShape(t *testing.T) {
 func TestInitDryRunViaCLI(t *testing.T) {
 	repo := t.TempDir()
 	out, err := run(t, "init", repo, "--dry-run", "--yes", "--skip-checks")
-	_ = out
-	// bd missing on PATH (or present) — either error mentions bd or succeeds
-	if err != nil {
-		assert.Contains(t, err.Error(), "bd")
-		return
-	}
+	require.NoError(t, err)
+	assert.Contains(t, out, "dry-run")
 	entries, rerr := os.ReadDir(repo)
 	require.NoError(t, rerr)
 	assert.Empty(t, entries)
@@ -66,12 +75,12 @@ func TestResetCmdHelp(t *testing.T) {
 
 func TestResetDryRunViaCLI(t *testing.T) {
 	repo := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".fabrik"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".fabrik", "dolt"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, ".fabrik", "config.yaml"), []byte("version: 1\n"), 0o644))
 
 	out, err := run(t, "reset", repo, "--dry-run", "--yes")
 	require.NoError(t, err)
-	assert.Contains(t, out, "would delete .fabrik")
+	assert.Contains(t, out, "would delete")
 
 	// Verify dry-run didn't delete the directory
 	assert.DirExists(t, filepath.Join(repo, ".fabrik"))

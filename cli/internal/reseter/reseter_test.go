@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
 	"github.com/ur-wesley/fabrik/cli/internal/initer"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
@@ -26,6 +27,9 @@ func testEnv(t *testing.T, f *exec.Fake) (Deps, *bytes.Buffer) {
 
 func initTestRepo(t *testing.T, f *exec.Fake) string {
 	t.Helper()
+	if !doltstore.HasCGO {
+		t.Skip("requires CGO_ENABLED=1")
+	}
 	repo := t.TempDir()
 	initDeps := initer.Deps{
 		Exec:  f,
@@ -38,11 +42,8 @@ func initTestRepo(t *testing.T, f *exec.Fake) string {
 
 func TestResetThinHubCleanWithBeads(t *testing.T) {
 	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"bd setup cursor":               "",
-		"bd setup opencode":             "",
-		"bd setup cursor --remove":      "",
-		"bd setup opencode --remove":    "",
+		"bd setup cursor --remove":   "",
+		"bd setup opencode --remove": "",
 	}}
 	repo := initTestRepo(t, f)
 
@@ -66,10 +67,12 @@ func TestResetThinHubCleanWithBeads(t *testing.T) {
 	cfg := Config{RepoPath: repo, Yes: true, Beads: true}
 	require.NoError(t, Reset(context.Background(), cfg, deps))
 
-	// All Fabrik and Beads artifacts must be gone
-	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
+	if body, err := os.ReadFile(filepath.Join(repo, "opencode.json")); err == nil {
+		assert.NotContains(t, string(body), "fabrik show agent")
+	}
 	assert.NoFileExists(t, filepath.Join(repo, "AGENTS.md"))
-	assert.NoDirExists(t, filepath.Join(repo, ".fabrik"))
+	assert.FileExists(t, filepath.Join(repo, ".fabrik", "config.yaml"))
+	assert.NoDirExists(t, filepath.Join(repo, ".fabrik", "dolt"))
 	assert.NoDirExists(t, filepath.Join(repo, ".beads"))
 	assert.NoFileExists(t, filepath.Join(repo, ".beads.gate.lock"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
@@ -81,12 +84,8 @@ func TestResetThinHubCleanWithBeads(t *testing.T) {
 	assert.Contains(t, out.String(), "Done.")
 }
 
-func TestResetWholeFabrikRemoved(t *testing.T) {
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"bd setup cursor":   "",
-		"bd setup opencode": "",
-	}}
+func TestResetPreservesFabrikHub(t *testing.T) {
+	f := &exec.Fake{}
 	repo := initTestRepo(t, f)
 
 	// Add user specs and docs into .fabrik/
@@ -99,18 +98,14 @@ func TestResetWholeFabrikRemoved(t *testing.T) {
 	cfg := Config{RepoPath: repo, Yes: true, NoBeads: true}
 	require.NoError(t, Reset(context.Background(), cfg, deps))
 
-	// Entire .fabrik directory must be deleted
-	assert.NoDirExists(t, filepath.Join(repo, ".fabrik"))
-	assert.NoFileExists(t, specPath)
-	assert.NoFileExists(t, docPath)
+	assert.DirExists(t, filepath.Join(repo, ".fabrik"))
+	assert.FileExists(t, specPath)
+	assert.FileExists(t, docPath)
+	assert.NoDirExists(t, filepath.Join(repo, ".fabrik", "dolt"))
 }
 
 func TestResetPreservesUserFiles(t *testing.T) {
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"bd setup cursor":   "",
-		"bd setup opencode": "",
-	}}
+	f := &exec.Fake{}
 	repo := initTestRepo(t, f)
 
 	// Add custom user rules and skills
@@ -155,11 +150,7 @@ func TestResetPreservesUserAgentsMd(t *testing.T) {
 }
 
 func TestResetDryRunTouchesNothing(t *testing.T) {
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"bd setup cursor":   "",
-		"bd setup opencode": "",
-	}}
+	f := &exec.Fake{}
 	repo := initTestRepo(t, f)
 
 	deps, out := testEnv(t, f)
@@ -192,11 +183,8 @@ func TestResetDeclined(t *testing.T) {
 
 func TestResetBeadsPrompt(t *testing.T) {
 	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"bd setup cursor":               "",
-		"bd setup opencode":             "",
-		"bd setup cursor --remove":      "",
-		"bd setup opencode --remove":    "",
+		"bd setup cursor --remove":   "",
+		"bd setup opencode --remove": "",
 	}}
 	repo := initTestRepo(t, f)
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".beads"), 0o755))
@@ -218,8 +206,8 @@ func TestResetBeadsPrompt(t *testing.T) {
 	cfg := Config{RepoPath: repo, Yes: false}
 	require.NoError(t, Reset(context.Background(), cfg, deps))
 
-	// Fabrik is removed, but Beads is preserved!
-	assert.NoDirExists(t, filepath.Join(repo, ".fabrik"))
+	assert.FileExists(t, filepath.Join(repo, ".fabrik", "config.yaml"))
+	assert.NoDirExists(t, filepath.Join(repo, ".fabrik", "dolt"))
 	assert.DirExists(t, filepath.Join(repo, ".beads"))
 	assert.FileExists(t, filepath.Join(repo, ".cursor", "rules", "beads.mdc"))
 	assert.False(t, f.Called("bd setup cursor --remove"))

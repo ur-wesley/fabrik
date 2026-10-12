@@ -75,10 +75,9 @@ const (
 
 // PlanResult holds all planned filesystem modifications.
 type PlanResult struct {
-	RepoDir         string
-	FilesToDelete   []string
-	RemoveFabrikDir bool
-	FabrikDirPath   string
+	RepoDir       string
+	FilesToDelete []string
+	DirsToDelete  []string
 
 	OpencodeAction  OpencodeAction
 	OpencodePath    string
@@ -315,6 +314,11 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 		result.OpencodeContent = updated
 	}
 
+	repoMCP := filepath.Join(abs, ".cursor", "mcp.json")
+	if _, err := os.Stat(repoMCP); err == nil {
+		result.FilesToDelete = append(result.FilesToDelete, repoMCP)
+	}
+
 	// 2. Cursor skills & agents
 	for _, dir := range []string{
 		filepath.Join(abs, ".cursor", "rules"),
@@ -385,14 +389,24 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 		result.AgentsMdContent = updated
 	}
 
-	// 5. Entire .fabrik directory
 	fabrikDir := filepath.Join(abs, ".fabrik")
 	if st, err := os.Stat(fabrikDir); err == nil && st.IsDir() {
-		result.RemoveFabrikDir = true
-		result.FabrikDirPath = fabrikDir
+		result.DirsToDelete = append(result.DirsToDelete,
+			filepath.Join(fabrikDir, "dolt"),
+			filepath.Join(fabrikDir, "export"),
+		)
+		for _, g := range []string{
+			filepath.Join(fabrikDir, "graph.db"),
+			filepath.Join(fabrikDir, "graph.db-wal"),
+			filepath.Join(fabrikDir, "graph.db-shm"),
+		} {
+			if _, err := os.Stat(g); err == nil {
+				result.FilesToDelete = append(result.FilesToDelete, g)
+			}
+		}
 	}
-
 	sort.Strings(result.FilesToDelete)
+	sort.Strings(result.DirsToDelete)
 	result.FilesToDelete = slices.Compact(result.FilesToDelete)
 
 	return result, nil
@@ -477,8 +491,9 @@ func executeDryRun(out io.Writer, plan *PlanResult) error {
 		hasActions = true
 	}
 
-	if plan.RemoveFabrikDir {
-		fmt.Fprintln(out, "would delete .fabrik (entire directory)")
+	for _, dir := range plan.DirsToDelete {
+		rel, _ := filepath.Rel(abs, dir)
+		fmt.Fprintf(out, "would delete %s\n", filepath.ToSlash(rel))
 		hasActions = true
 	}
 
@@ -519,6 +534,7 @@ func executeReset(ctx context.Context, out io.Writer, plan *PlanResult, d Deps) 
 			fmt.Fprintln(out, "updated opencode.json (removed Fabrik agents)")
 		}
 	}
+	stripOpencodeFabrikMCP(plan.OpencodePath)
 
 	// 2. files to delete (skills, agents, beads rules)
 	for _, f := range plan.FilesToDelete {
@@ -541,13 +557,14 @@ func executeReset(ctx context.Context, out io.Writer, plan *PlanResult, d Deps) 
 		}
 	}
 
-	// 4. Remove entire .fabrik
-	if plan.RemoveFabrikDir {
-		if err := os.RemoveAll(plan.FabrikDirPath); err == nil {
-			fmt.Fprintln(out, "deleted .fabrik/")
+	for _, dir := range plan.DirsToDelete {
+		rel, _ := filepath.Rel(abs, dir)
+		if err := os.RemoveAll(dir); err == nil || os.IsNotExist(err) {
+			fmt.Fprintf(out, "deleted %s\n", filepath.ToSlash(rel))
 			deletedCount++
 		}
 	}
+	stripFabrikGitignore(abs, out)
 
 	// 5. Beads unwiring and removal
 	if plan.RemoveBeads {
@@ -604,4 +621,66 @@ func removeIfEmpty(dir string) {
 func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+var fabrikGitignoreLines = []string{
+	".fabrik/dolt/",
+	".fabrik/graph.db",
+	".fabrik/export/",
+}
+
+func stripOpencodeFabrikMCP(path string) {
+	if path == "" {
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return
+	}
+	mcp, ok := root["mcp"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	delete(mcp, "fabrik")
+	if len(mcp) == 0 {
+		delete(root, "mcp")
+	}
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(path, append(out, '\n'), 0o644)
+}
+
+func stripFabrikGitignore(abs string, out io.Writer) {
+	path := filepath.Join(abs, ".gitignore")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	var keep []string
+	removed := false
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		if slices.Contains(fabrikGitignoreLines, trim) {
+			removed = true
+			continue
+		}
+		keep = append(keep, line)
+	}
+	if !removed {
+		return
+	}
+	body := strings.TrimRight(strings.Join(keep, "\n"), "\n")
+	if body != "" {
+		body += "\n"
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err == nil {
+		fmt.Fprintln(out, "updated .gitignore")
+	}
 }

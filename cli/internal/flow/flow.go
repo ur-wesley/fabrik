@@ -1,13 +1,12 @@
 // Package flow ports .fabrik/fabrik.sh + loop.sh to Go.
 //
 // Run mirrors fabrik.sh (setup gate, then PRD-or-TUI, then plan + build).
-// Loop mirrors loop.sh (poll bd ready/list, opencode run with the embedded
+// Loop mirrors loop.sh (poll ready issues in Dolt, opencode run with the embedded
 // PROMPT, opt-in git push via --push). Output goes to stdout only; no state.md.
 package flow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/store"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 )
 
@@ -69,10 +69,10 @@ func resolveRepo(repo string) (string, error) {
 	return filepath.Abs(repo)
 }
 
-// CheckSetup mirrors the fabrik.sh gate: .beads dir + .fabrik/config.yaml.
+// CheckSetup gates on Fabrik v2 repo layout (.fabrik/dolt + config).
 func CheckSetup(repo string) error {
-	if st, err := os.Stat(filepath.Join(repo, ".beads")); err != nil || !st.IsDir() {
-		return fmt.Errorf("Fabrik setup incomplete: missing .beads (run fabrik init first)")
+	if _, ok := store.RepoRoot(repo); !ok {
+		return fmt.Errorf("Fabrik setup incomplete: no store (run fabrik init first)")
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".fabrik", "config.yaml")); err != nil {
 		return fmt.Errorf("Fabrik setup incomplete: missing .fabrik/config.yaml (run fabrik init first)")
@@ -118,36 +118,6 @@ func Run(ctx context.Context, cfg RunConfig, d Deps) error {
 	return nil
 }
 
-// issue is the bd JSON subset the loop needs.
-type issue struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-}
-
-func parseIssues(raw string) []issue {
-	var arr []issue
-	if err := json.Unmarshal([]byte(raw), &arr); err == nil {
-		return arr
-	}
-	var wrapped struct {
-		Issues []issue `json:"issues"`
-	}
-	if err := json.Unmarshal([]byte(raw), &wrapped); err == nil {
-		return wrapped.Issues
-	}
-	return nil
-}
-
-// bdList shells out to bd in the repo dir. Errors propagate: callers must
-// surface them instead of treating a failed query as "no issues".
-func bdList(ctx context.Context, r exec.Runner, repo string, args ...string) ([]issue, error) {
-	out, err := r.RunIn(ctx, repo, "bd", args...)
-	if err != nil {
-		return nil, fmt.Errorf("bd %s: %w", strings.Join(args, " "), err)
-	}
-	return parseIssues(out), nil
-}
-
 // validBranch reports whether name is a safe git branch for push.
 func validBranch(name string) bool {
 	if name == "" || strings.HasPrefix(name, "-") || strings.HasPrefix(name, ".") {
@@ -173,7 +143,7 @@ func currentBranch(ctx context.Context, r exec.Runner, repo string) string {
 	return branch
 }
 
-// Loop polls bd ready/list and drives opencode runs until no open/ready
+// Loop polls ready issues in Dolt and drives opencode runs until no unfinished
 // issues remain (build) or one pass completes (plan), capped by Max.
 // All commands run in the repo dir (RepoPath, default cwd).
 func Loop(ctx context.Context, cfg LoopConfig, d Deps) error {
@@ -189,8 +159,8 @@ func Loop(ctx context.Context, cfg LoopConfig, d Deps) error {
 	if err != nil {
 		return fmt.Errorf("prompt file hub/PROMPT_%s.md: %w", cfg.Mode, err)
 	}
-	if _, err := d.Exec.LookPath("bd"); err != nil {
-		return fmt.Errorf("bd not found on PATH (install Beads first)")
+	if OpenLoopStore == nil {
+		return fmt.Errorf("fabrik: loop store not configured")
 	}
 	branch := currentBranch(ctx, d.Exec, repo)
 	iter := 0
@@ -199,35 +169,46 @@ func Loop(ctx context.Context, cfg LoopConfig, d Deps) error {
 			fmt.Fprintf(d.Out, "Reached max iterations: %d\n", cfg.Max)
 			break
 		}
-		openIssues, err := bdList(ctx, d.Exec, repo, "list", "--status=open", "--json")
+		issueStore, err := OpenLoopStore(ctx, repo)
 		if err != nil {
-			return err
+			if err == store.ErrNoStore {
+				return err
+			}
+			return fmt.Errorf("fabrik: store: %w", err)
 		}
-		closedIssues, err := bdList(ctx, d.Exec, repo, "list", "--status=closed", "--json", "--limit", "100")
+		unfinished, done, readyIssues, err := issueStore.Snapshot(ctx)
 		if err != nil {
-			return err
-		}
-		readyIssues, err := bdList(ctx, d.Exec, repo, "ready", "--json")
-		if err != nil {
-			return err
+			_ = issueStore.Close()
+			return fmt.Errorf("fabrik: store: %w", err)
 		}
 
-		nextID, nextDesc := "plan", "PRD gap analysis and bd create"
+		nextID, nextDesc := "plan", "PRD gap analysis and issue create"
 		if cfg.Mode == "build" {
-			if len(openIssues) == 0 {
-				fmt.Fprintln(d.Out, "No open Beads issues.")
+			if unfinished == 0 {
+				_ = issueStore.Close()
+				fmt.Fprintln(d.Out, "No open issues.")
 				break
 			}
 			if len(readyIssues) == 0 {
+				_ = issueStore.Close()
 				fmt.Fprintln(d.Out, "Open issues exist but none are ready.")
 				break
 			}
-			nextID, nextDesc = readyIssues[0].ID, readyIssues[0].Title
+			claimed, err := issueStore.ClaimNext(ctx, "fabrik")
+			if err != nil {
+				_ = issueStore.Close()
+				return fmt.Errorf("fabrik: claim: %w", err)
+			}
+			fmt.Fprintf(d.Out, "claim %s  %s\n", claimed.ID, claimed.Title)
+			nextID, nextDesc = claimed.ID, claimed.Title
+		}
+		if err := issueStore.Close(); err != nil {
+			return fmt.Errorf("fabrik: store: %w", err)
 		}
 
 		fmt.Fprintln(d.Out, "====================================================")
 		fmt.Fprintf(d.Out, "FABRIK %s (iteration %d)\n", cfg.Mode, iter+1)
-		fmt.Fprintf(d.Out, "Open: %d | Closed: %d | Ready: %d\n", len(openIssues), len(closedIssues), len(readyIssues))
+		fmt.Fprintf(d.Out, "Open: %d | Closed: %d | Ready: %d\n", unfinished, done, len(readyIssues))
 		fmt.Fprintf(d.Out, "Target: %s — %s\n", nextID, nextDesc)
 		fmt.Fprintln(d.Out, "====================================================")
 

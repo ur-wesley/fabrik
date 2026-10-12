@@ -7,6 +7,7 @@ package initer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/ur-wesley/fabrik/cli/internal/apps"
 	"github.com/ur-wesley/fabrik/cli/internal/deps"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/mcpconfig"
 	"github.com/ur-wesley/fabrik/cli/internal/repo"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 	"github.com/ur-wesley/fabrik/cli/internal/ui"
@@ -32,6 +34,7 @@ type Config struct {
 	Full bool
 	// Apps specifies which AI applications to configure (cursor, pi, antigravity, opencode).
 	Apps []string
+	JSON   bool
 }
 
 // Deps are injectable seams.
@@ -39,7 +42,9 @@ type Deps struct {
 	Exec       exec.Runner
 	Check      func(ctx context.Context) error // advisory tool check; nil skips
 	Out        io.Writer
-	SelectApps func(defaults []string, yes bool) ([]string, error)
+	SelectApps  func(defaults []string, yes bool) ([]string, error)
+	InitStores  func(ctx context.Context, abs string, r exec.Runner) (StoreResult, error)
+	RegisterMCP func(apps []string, repo string) error
 }
 
 func (d *Deps) defaults() {
@@ -52,6 +57,19 @@ func (d *Deps) defaults() {
 	if d.SelectApps == nil {
 		d.SelectApps = ui.SelectApps
 	}
+	if d.InitStores == nil {
+		d.InitStores = InitRepoStores
+	}
+	if d.RegisterMCP == nil {
+		d.RegisterMCP = mcpconfig.Register
+	}
+}
+
+type initJSON struct {
+	Repo    string `json:"repo"`
+	Dolt    string `json:"dolt"`
+	Graph   string `json:"graph"`
+	Created bool   `json:"created"`
 }
 
 // Init initializes repoPath.
@@ -70,17 +88,22 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 	if err != nil {
 		return err
 	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("fabrik: not a directory: %s", abs)
+	}
+
 	if !repo.IsGitRepo(abs) {
-		fmt.Fprintf(out, "%s\n", ui.Warn.Render("Not a git repository (no .git found). Run `git init` first — Fabrik/Beads work best in git repos."))
+		fmt.Fprintf(out, "%s\n", ui.Warn.Render("Not a git repository (no .git found). Run `git init` first — Fabrik works best in git repos."))
 	}
 
 	if !cfg.SkipChecks && d.Check != nil {
 		if err := d.Check(ctx); err != nil {
-			fmt.Fprintf(out, "%s\n", ui.Warn.Render("(advisory: optional tools missing — continuing, bd is required)"))
+			fmt.Fprintf(out, "%s\n", ui.Warn.Render("(advisory: repo check reported issues — continuing)"))
 		}
-	}
-	if _, err := d.Exec.LookPath("bd"); err != nil {
-		return fmt.Errorf("bd not found on PATH (install Beads first)")
 	}
 
 	pins, err := deps.Load()
@@ -93,24 +116,23 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 		return err
 	}
 
-	// 1. Beads
-	if st, err := os.Stat(filepath.Join(abs, ".beads")); err == nil && st.IsDir() {
-		fmt.Fprintf(out, "Beads already initialized in %s\n", abs)
-	} else {
-		if !ui.Confirm("Run bd init here?", cfg.Yes) {
-			return fmt.Errorf("bd init declined")
+	var storeRes StoreResult
+	if cfg.DryRun {
+		fmt.Fprintf(out, "dry-run: open dolt %s\n", filepath.Join(abs, ".fabrik", "dolt"))
+		fmt.Fprintf(out, "dry-run: open graph %s\n", filepath.Join(abs, ".fabrik", "graph.db"))
+		storeRes = StoreResult{
+			DoltPath:  filepath.Join(abs, ".fabrik", "dolt"),
+			GraphPath: filepath.Join(abs, ".fabrik", "graph.db"),
+			Created:   true,
 		}
-		if cfg.DryRun {
-			fmt.Fprintln(out, "dry-run: bd init --non-interactive --skip-agents --skip-hooks -q")
-		} else {
-			if _, err := d.Exec.RunIn(ctx, abs, "bd", "init", "--non-interactive", "--skip-agents", "--skip-hooks", "-q"); err != nil {
-				return fmt.Errorf("bd init: %w", err)
-			}
-			fmt.Fprintln(out, "Beads initialized")
+	} else {
+		storeRes, err = d.InitStores(ctx, abs, d.Exec)
+		if err != nil {
+			return err
 		}
 	}
 
-	// 2. Hub + skills + subagents: thin default, --full restores legacy dump.
+	// Hub + skills + subagents: thin default, --full restores legacy dump.
 	if cfg.Full {
 		if err := initFull(out, cfg.DryRun, abs, pins.Subagents, selectedApps); err != nil {
 			return err
@@ -121,44 +143,13 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 		}
 	}
 
-	// 3. Per-repo agent wiring (best-effort), then strip side-effect dirs.
-	hadAgents := exists(filepath.Join(abs, ".agents"))
-	hadClaude := exists(filepath.Join(abs, ".claude"))
-	hadCodex := exists(filepath.Join(abs, ".codex"))
 	if cfg.DryRun {
-		fmt.Fprintf(out, "dry-run: bd/engram setup for %s\n", strings.Join(selectedApps, "|"))
-	} else {
-		if _, err := d.Exec.LookPath("bd"); err == nil {
-			if apps.Contains(selectedApps, apps.Cursor) {
-				_, _ = d.Exec.RunIn(ctx, abs, "bd", "setup", "cursor")
-			}
-			if apps.Contains(selectedApps, apps.OpenCode) {
-				_, _ = d.Exec.RunIn(ctx, abs, "bd", "setup", "opencode")
-			}
-		}
-		if _, err := d.Exec.LookPath("engram"); err == nil {
-			for _, app := range selectedApps {
-				target := app
-				if app == apps.Antigravity {
-					target = "antigravity-cli"
-				}
-				_, _ = d.Exec.RunIn(ctx, abs, "engram", "setup", target)
-			}
-		}
-	}
-	if !cfg.DryRun {
-		if !hadAgents && !apps.Contains(selectedApps, apps.Antigravity) {
-			os.RemoveAll(filepath.Join(abs, ".agents"))
-		}
-		if !hadClaude {
-			os.RemoveAll(filepath.Join(abs, ".claude"))
-		}
-		if !hadCodex {
-			os.RemoveAll(filepath.Join(abs, ".codex"))
-		}
+		fmt.Fprintf(out, "dry-run: register fabrik mcp for %s\n", strings.Join(selectedApps, ","))
+	} else if err := d.RegisterMCP(selectedApps, abs); err != nil {
+		return err
 	}
 
-	// 4. Root AGENTS.md: thin pointer by default, full workflow note with --full.
+	// Root AGENTS.md: thin pointer by default, full workflow note with --full.
 	if cfg.Full {
 		note := tmpl.WorkflowNote()
 		agentsPath := filepath.Join(abs, "AGENTS.md")
@@ -192,13 +183,13 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 		}
 	}
 
-	fmt.Fprintln(out, "")
-	hub := ".fabrik/README.md"
-	if !cfg.Full {
-		hub = ".fabrik/config.yaml (content via `fabrik show <key>`)"
+	if cfg.JSON {
+		return json.NewEncoder(out).Encode(initJSON{
+			Repo: abs, Dolt: storeRes.DoltPath, Graph: storeRes.GraphPath, Created: storeRes.Created,
+		})
 	}
-	fmt.Fprintf(out, "Done. Apps: %s. Hub: %s\n", apps.FormatList(selectedApps), hub)
-	fmt.Fprintln(out, "Next: grill, bd create issues, bd ready, claim, close.")
+	fmt.Fprintf(out, "dolt %s\n", storeRes.DoltPath)
+	fmt.Fprintf(out, "graph %s\n", storeRes.GraphPath)
 	return nil
 }
 

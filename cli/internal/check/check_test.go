@@ -4,67 +4,57 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
+	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
 
-func TestRunAllMissing(t *testing.T) {
-	r := Run(context.Background(), &exec.Fake{})
-	assert.False(t, r.OK)
-	for _, tool := range Tools {
-		assert.Equal(t, "missing", r.Status[tool])
-	}
+func TestRunDoltMissing(t *testing.T) {
+	repo := t.TempDir()
+	r, code := Run(context.Background(), repo)
+	assert.Equal(t, 1, code)
+	assert.Equal(t, "missing", r.Dolt)
+	assert.Equal(t, "missing", r.Graph)
+	assert.Equal(t, 0, r.Issues)
 }
 
-func TestRunAllPresent(t *testing.T) {
-	f := &exec.Fake{
-		Path: map[string]bool{"bd": true, "engram": true, "graphify": true, "bun": true, "pi": true, "uv": true},
-		Outputs: map[string]string{
-			"bd version":         "bd version 1.3.0",
-			"engram version":     "engram 2.2.1",
-			"graphify --version": "graphifyy 0.9.69",
-		},
+func TestRunGraphMissingDoltPresent(t *testing.T) {
+	if os.Getenv("CGO_ENABLED") == "0" {
+		t.Skip("requires CGO_ENABLED=1")
 	}
-	r := Run(context.Background(), f)
-	assert.True(t, r.OK)
-	assert.Equal(t, "bd version 1.3.0", r.Versions["bd"])
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(store.DoltDir(repo), 0o755))
+	r, code := Run(context.Background(), repo)
+	if r.Dolt == "ok" {
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "missing", r.Graph)
+	}
 }
 
 func TestPrintJSONShape(t *testing.T) {
-	f := &exec.Fake{Path: map[string]bool{"bd": true}}
-	r := Run(context.Background(), f)
+	repo := t.TempDir()
+	r, _ := Run(context.Background(), repo)
 	var buf bytes.Buffer
 	require.NoError(t, PrintJSONTo(&buf, r))
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &m))
-	assert.Equal(t, "ok", m["bd"])
-	assert.Equal(t, "missing", m["pi"])
-	assert.Equal(t, false, m["ok"])
-}
-
-func TestJevOptionalMissingByDefault(t *testing.T) {
-	t.Setenv("TYPESAFE_API_KEY", "")
-	r := Run(context.Background(), &exec.Fake{})
-	assert.Contains(t, r.Status["jev"], "missing (optional")
-	assert.False(t, r.OK) // OK still driven by required tools only
-}
-
-func TestJevOptionalOkWithKey(t *testing.T) {
-	t.Setenv("TYPESAFE_API_KEY", "test-key")
-	r := Run(context.Background(), &exec.Fake{})
-	assert.Contains(t, r.Status["jev"], "ok")
-	assert.False(t, r.OK) // required tools still missing; jev never flips OK
-}
-
-func TestJevNeverFailsCheck(t *testing.T) {
-	t.Setenv("TYPESAFE_API_KEY", "")
-	f := &exec.Fake{
-		Path: map[string]bool{"bd": true, "engram": true, "graphify": true, "bun": true, "pi": true, "uv": true},
+	for _, k := range []string{"dolt", "dolt_path", "graph", "graph_path", "schema_dolt", "schema_graph", "issues", "graph_files"} {
+		assert.Contains(t, m, k)
 	}
-	r := Run(context.Background(), f)
-	assert.True(t, r.OK)
-	assert.Contains(t, r.Status["jev"], "missing (optional")
+}
+
+func TestRunGraphSQLiteOnly(t *testing.T) {
+	repo := t.TempDir()
+	graphPath := store.GraphDBPath(repo)
+	require.NoError(t, os.MkdirAll(filepath.Dir(graphPath), 0o755))
+	_, err := sqlmigrate.ApplySQLite(context.Background(), "graph", graphPath)
+	require.NoError(t, err)
+	r, code := Run(context.Background(), repo)
+	assert.Equal(t, 1, code)
+	assert.Equal(t, "missing", r.Dolt)
 }

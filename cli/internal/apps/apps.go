@@ -4,6 +4,8 @@ package apps
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ur-wesley/fabrik/cli/internal/clierr"
 )
 
 const (
@@ -61,7 +63,7 @@ func Normalize(raw []string) ([]string, error) {
 				return append([]string(nil), All...), nil
 			}
 			if !IsValid(p) {
-				return nil, fmt.Errorf("invalid app %q: supported apps are %s", p, strings.Join(All, ", "))
+				return nil, clierr.Usage(fmt.Sprintf("fabrik: unknown app: %s", p))
 			}
 			if !seen[p] {
 				seen[p] = true

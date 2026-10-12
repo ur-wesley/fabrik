@@ -49,7 +49,7 @@ func TestNormalizeValid(t *testing.T) {
 func TestNormalizeInvalid(t *testing.T) {
 	_, err := Normalize([]string{"cursor", "unknown_app"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid app \"unknown_app\"")
+	assert.Contains(t, err.Error(), "unknown app: unknown_app")
 }
 
 func TestContains(t *testing.T) {
