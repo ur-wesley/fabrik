@@ -97,12 +97,8 @@ fn composer_card(ui: &mut Ui, composer: ComposerState<'_>) -> Option<Action> {
 
     if let Some(message) = &error {
         let line = error_line(message, 72);
-        let label = egui::Label::new(
-            egui::RichText::new(line)
-                .small()
-                .color(theme::sys_red()),
-        )
-        .truncate();
+        let label =
+            egui::Label::new(egui::RichText::new(line).small().color(theme::sys_red())).truncate();
         let resp = ui.add(label);
         resp.on_hover_text(message);
         ui.add_space(theme::SPACING);

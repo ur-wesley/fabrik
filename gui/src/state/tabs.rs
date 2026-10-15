@@ -45,7 +45,6 @@ impl AppState {
             self.apply_repo(path);
             return vec![Action::Refresh];
         }
-        self.touch();
         Vec::new()
     }
 

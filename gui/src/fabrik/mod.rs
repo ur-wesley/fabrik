@@ -10,6 +10,26 @@ use serde::Deserialize;
 
 use crate::model::{Issue, IssueDetail, ShowIssueJson, Snapshot};
 
+pub mod bin;
+pub mod read_parity;
+pub mod writes;
+#[allow(unused_imports)]
+pub use bin::fabrik_bin;
+#[allow(unused_imports)]
+pub use read_parity::{
+    ContextObservation, ContextTest, CurrentProjectResult, DetectChangesResult, GraphContextResult,
+    GraphImpactResult, MemCheckResult, MemTimelineResult, fetch_graph_context,
+    fetch_graph_detect_changes, fetch_graph_explore_issue, fetch_graph_impact,
+    fetch_graph_overview, fetch_mem_check, fetch_mem_current_project, fetch_mem_stats,
+    fetch_mem_timeline,
+};
+#[allow(unused_imports)]
+pub use writes::{
+    DEP_KINDS, ISSUE_KINDS, IssueCreateParams, MEM_KINDS, MemSaveParams, MemUpdateParams, add_dep,
+    claim_issue, close_issue, create_issue, delete_observation, post_note, save_observation,
+    save_prompt, unclaim_issue, update_observation,
+};
+
 #[derive(Debug)]
 pub enum FabrikError {
     Spawn(String),
@@ -25,10 +45,6 @@ impl std::fmt::Display for FabrikError {
             Self::Parse(msg) => write!(f, "fabrik json parse failed: {msg}"),
         }
     }
-}
-
-pub fn fabrik_bin() -> String {
-    std::env::var("FABRIK_BIN").unwrap_or_else(|_| "fabrik".to_owned())
 }
 
 pub fn fetch_snapshot(repo: &Path) -> Result<Snapshot, FabrikError> {
@@ -50,18 +66,13 @@ pub fn fetch_detail(repo: &Path, id: &str) -> Result<IssueDetail, FabrikError> {
     Ok(item.into_detail())
 }
 
-pub fn post_note(repo: &Path, id: &str, body: &str) -> Result<IssueDetail, FabrikError> {
-    if body.trim().is_empty() {
-        return Err(FabrikError::Parse("note is empty".to_owned()));
-    }
-    run_fabrik(Some(repo), &["issue", "note", id, body.trim(), "--json"])?;
-    fetch_detail(repo, id)
-}
-
 fn list_all(repo: &Path) -> Result<Vec<Issue>, FabrikError> {
     let output = run_fabrik(Some(repo), &["issue", "list", "--json"])?;
     let items = parse_array::<crate::model::IssueJson>(&output)?;
-    Ok(items.into_par_iter().map(|j| j.into_issue()).collect())
+    Ok(items
+        .into_par_iter()
+        .map(crate::model::IssueJson::into_issue)
+        .collect())
 }
 
 fn ready_ids(repo: &Path) -> Result<HashSet<String>, FabrikError> {
@@ -116,6 +127,9 @@ where
 pub struct MemSession {
     pub id: String,
     #[serde(default)]
+    #[allow(dead_code)]
+    pub actor: String,
+    #[serde(default)]
     pub started_at: String,
     #[serde(default)]
     pub ended_at: Option<String>,
@@ -133,6 +147,8 @@ pub struct MemSession {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Observation {
+    // Legacy split (see `is_observation_id` / CLI `observationIDRe ^o-[0-9a-f]+$`):
+    // context/search stay tolerant (legacy `"358"` ids); get/timeline need `o-<hex>`.
     pub id: String,
     #[serde(default)]
     pub session_id: Option<String>,
@@ -144,6 +160,14 @@ pub struct Observation {
     pub title: String,
     #[serde(default)]
     pub body: String,
+    // `mem get --json` sends these; `mem context/search --json` omit them
+    // when unset, so both need `default` tolerance.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub topic_key: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub symbol_id: Option<String>,
     #[serde(default)]
     pub created_at: String,
 }
@@ -168,32 +192,78 @@ pub struct MemContext {
 }
 
 pub fn run_project_init(repo: &Path, apps: &[String]) -> Result<(), FabrikError> {
+    // Positional path (no `-C`); thin hub by default (`--full` restores dump,
+    // `--apps` forwarded). `--json` prints human lines first, JSON last.
+    let path = repo.to_string_lossy().into_owned();
     let mut args: Vec<String> = vec![
         "init".into(),
+        path,
         "--yes".into(),
         "--json".into(),
         "--skip-checks".into(),
+        "--full=false".into(),
     ];
     for app in apps {
         args.push("--apps".into());
         args.push(app.clone());
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_fabrik(Some(repo), &arg_refs)?;
+    let output = run_fabrik(None, &arg_refs)?;
+    parse_init_output(&output)?;
     Ok(())
 }
 
-pub fn fetch_mem_context() -> Result<MemContext, FabrikError> {
-    let output = run_fabrik(None, &["mem", "context", "--json"])?;
+/// `fabrik init --json` result object (last `{…}` line of stdout).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct InitResult {
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub dolt: String,
+    #[serde(default)]
+    pub graph: String,
+    #[serde(default)]
+    pub created: bool,
+}
+
+fn parse_init_output(raw: &str) -> Result<InitResult, FabrikError> {
+    for line in raw.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('{')
+            && let Ok(result) = serde_json::from_str::<InitResult>(trimmed)
+        {
+            return Ok(result);
+        }
+    }
+    Err(FabrikError::Parse(
+        "init output has no json result".to_owned(),
+    ))
+}
+
+pub fn fetch_mem_context(repo: Option<&Path>) -> Result<MemContext, FabrikError> {
+    let output = run_fabrik(repo, &["mem", "context", "--json"])?;
     parse_one(&output)
 }
 
-pub fn fetch_mem_search(query: &str, project: Option<&Path>) -> Result<Vec<Observation>, FabrikError> {
+pub fn fetch_mem_search(
+    query: &str,
+    project: Option<&Path>,
+) -> Result<Vec<Observation>, FabrikError> {
     let output = if let Some(p) = project {
-        let path = p.to_string_lossy();
+        // `--project` takes the CLI's project label (absolute repo root),
+        // not a relative GUI path. `-C` scopes cwd-derived labels (save,
+        // current-project) to the same tab.
+        let label = crate::model::project_label(p);
         run_fabrik(
-            None,
-            &["mem", "search", query, "--project", path.as_ref(), "--json"],
+            Some(p),
+            &[
+                "mem",
+                "search",
+                query,
+                "--project",
+                label.as_str(),
+                "--json",
+            ],
         )?
     } else {
         run_fabrik(None, &["mem", "search", query, "--json"])?
@@ -205,6 +275,12 @@ pub fn fetch_mem_search(query: &str, project: Option<&Path>) -> Result<Vec<Obser
 }
 
 pub fn fetch_mem_get(id: &str) -> Result<Observation, FabrikError> {
+    // Strict gate like CLI (`o-<hex>`): reject legacy ids without spawning.
+    if !crate::model::is_observation_id(id) {
+        return Err(FabrikError::Parse(format!(
+            "invalid observation id {id:?}: must match o-<hex>"
+        )));
+    }
     let output = run_fabrik(None, &["mem", "get", id, "--json"])?;
     parse_one(&output)
 }
@@ -233,6 +309,23 @@ pub struct GraphEdge {
     pub kind: String,
     #[serde(default)]
     pub label: String,
+    // Live edges carry `confidence: extracted|inferred`; unused by the GUI
+    // but required for shape tolerance.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlastRadius {
+    // The CLI emits `"callers": null` when empty, so this must stay `Option`
+    // (`#[serde(default)]` alone does not cover explicit null).
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub callers: Option<Vec<String>>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub dependents_count: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -245,6 +338,12 @@ pub struct ExploreResult {
     pub files: Vec<ExploreFile>,
     #[serde(default)]
     pub paths: Vec<ExplorePath>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub blast_radius: Option<BlastRadius>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub candidates: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -343,10 +442,7 @@ pub fn fetch_graph_explain(repo: &Path, id: &str) -> Result<ExplainResult, Fabri
 }
 
 pub fn fetch_graph_path(repo: &Path, from: &str, to: &str) -> Result<PathResult, FabrikError> {
-    let output = run_fabrik(
-        Some(repo),
-        &["graph", "path", from, to, "--json"],
-    )?;
+    let output = run_fabrik(Some(repo), &["graph", "path", from, to, "--json"])?;
     parse_one(&output)
 }
 
@@ -397,28 +493,4 @@ pub fn run_graph_build(repo: &Path) -> Result<GraphBuildResult, FabrikError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mem_search_null_is_empty_vec() {
-        let raw = "null";
-        let parsed: Vec<Observation> = if raw.is_empty() || raw == "null" {
-            Vec::new()
-        } else {
-            serde_json::from_str(raw).unwrap()
-        };
-        assert!(parsed.is_empty());
-    }
-
-    #[test]
-    fn explore_empty_files_yields_no_nodes() {
-        let explore = ExploreResult {
-            indexed: true,
-            hint: String::new(),
-            files: Vec::new(),
-            paths: Vec::new(),
-        };
-        assert!(nodes_from_explore(&explore).is_empty());
-    }
-}
+mod tests;

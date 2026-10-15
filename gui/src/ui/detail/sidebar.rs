@@ -3,8 +3,9 @@ use eframe::egui::{self, ScrollArea, Ui};
 use crate::model::{Action, IssueDetail, format_local};
 
 use super::super::{badge, icons, theme};
+use super::OpsForm;
 
-pub(super) fn sidebar(ui: &mut Ui, detail: &IssueDetail) -> Option<Action> {
+pub(super) fn sidebar(ui: &mut Ui, detail: &IssueDetail, ops: &mut OpsForm<'_>) -> Option<Action> {
     let mut action = None;
 
     ScrollArea::vertical()
@@ -12,6 +13,17 @@ pub(super) fn sidebar(ui: &mut Ui, detail: &IssueDetail) -> Option<Action> {
         .auto_shrink([false, false])
         .show(ui, |ui| {
             if let Some(act) = render_properties_section(ui, detail) {
+                action = Some(act);
+            }
+
+            ui.add_space(theme::SPACING);
+            ui.painter().hline(
+                ui.max_rect().x_range(),
+                ui.cursor().top(),
+                theme::hairline(),
+            );
+
+            if let Some(act) = render_actions_section(ui, detail, ops) {
                 action = Some(act);
             }
 
@@ -32,7 +44,6 @@ pub(super) fn sidebar(ui: &mut Ui, detail: &IssueDetail) -> Option<Action> {
 fn render_properties_section(ui: &mut Ui, detail: &IssueDetail) -> Option<Action> {
     let mut action = None;
     sidebar_section_header(ui, "PROPERTIES");
-
     sidebar_prop_row(ui, "Status", |ui| {
         badge::status_badge(ui, &detail.status);
     });
@@ -76,6 +87,89 @@ fn render_properties_section(ui: &mut Ui, detail: &IssueDetail) -> Option<Action
         });
     }
 
+    ui.add_space(theme::SPACING);
+    let explore_btn = ui.add(
+        egui::Button::new(
+            egui::RichText::new(format!("{} explore in graph", icons::MAGNIFYING_GLASS))
+                .small()
+                .color(theme::neon_cyan()),
+        )
+        .fill(egui::Color32::TRANSPARENT)
+        .stroke(egui::Stroke::NONE),
+    );
+    if theme::pointer(explore_btn)
+        .on_hover_text("Seed graph explore from this issue")
+        .clicked()
+    {
+        action = Some(Action::ExploreIssueSeed {
+            issue: detail.id.clone(),
+            query: detail.title.clone(),
+        });
+    }
+
+    action
+}
+
+fn render_actions_section(
+    ui: &mut Ui,
+    detail: &IssueDetail,
+    ops: &mut OpsForm<'_>,
+) -> Option<Action> {
+    let mut action = None;
+    sidebar_section_header(ui, "ACTIONS");
+    ui.add_enabled_ui(!ops.busy, |ui| {
+        ui.horizontal(|ui| {
+            // Claim when open, release when active; close is always offered
+            // and the CLI validates the transition.
+            if ops.active {
+                if ui.small_button("Unclaim").clicked() {
+                    action = Some(Action::UnclaimIssue(detail.id.clone()));
+                }
+            } else if ui.small_button("Claim").clicked() {
+                action = Some(Action::ClaimIssue(detail.id.clone()));
+            }
+            if ui.small_button("Close").clicked() {
+                action = Some(Action::CloseIssue(detail.id.clone()));
+            }
+        });
+    });
+    if ops.busy {
+        ui.horizontal(|ui| {
+            ui.add(egui::Spinner::new());
+            ui.label(
+                egui::RichText::new("Working…")
+                    .small()
+                    .italics()
+                    .color(theme::dim_text()),
+            );
+        });
+    }
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("by").small().color(theme::dim_text()));
+        let by_resp = ui.add(
+            egui::TextEdit::singleline(ops.by)
+                .hint_text("fabrik")
+                .desired_width(120.0),
+        );
+        if by_resp.changed() {
+            action = Some(Action::SetOpBy((*ops.by).clone()));
+        }
+    });
+    let reason_resp = ui.add(
+        egui::TextEdit::singleline(ops.close_reason)
+            .hint_text("close reason — `--reason …`")
+            .desired_width(f32::INFINITY),
+    );
+    if reason_resp.changed() {
+        action = Some(Action::SetCloseReason((*ops.close_reason).clone()));
+    }
+    let mut force = *ops.force;
+    if ui.checkbox(&mut force, "force").changed() {
+        action = Some(Action::ToggleWriteForce);
+    }
+    if let Some(message) = ops.error.clone() {
+        ui.label(egui::RichText::new(message).small().color(theme::sys_red()));
+    }
     action
 }
 

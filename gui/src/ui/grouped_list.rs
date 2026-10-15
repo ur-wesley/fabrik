@@ -20,28 +20,45 @@ pub fn grouped_row(ui: &mut Ui, props: &GroupedRowProps) -> egui::Response {
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::ZERO, theme::row_selected_fill());
     }
+    // Clip all painted text to the row rect so long subtitles can never
+    // overflow into neighboring cards (the sidebar column is narrow).
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    child.set_clip_rect(rect);
     let inner = rect.shrink2(egui::vec2(theme::PAD, 6.0));
     let chevron_w = 14.0;
     let text_right = inner.max.x - chevron_w - 4.0;
-    let title_pos = egui::pos2(inner.min.x, inner.min.y);
-    ui.painter().text(
-        title_pos,
+    // Measured text budget: the title/subtitle share the space left of the
+    // chevron; anything longer is ellipsized, full text stays in the hover
+    // tooltip below.
+    let budget = (text_right - inner.min.x).max(0.0);
+    let title_font = theme::font_callout();
+    let sub_font = theme::font_footnote();
+    let title = ellipsize(&child, &props.title, &title_font, budget);
+    child.painter().text(
+        egui::pos2(inner.min.x, inner.min.y),
         egui::Align2::LEFT_TOP,
-        &props.title,
-        theme::font_callout(),
+        title,
+        title_font,
         theme::text_primary(),
     );
+    let mut tip = props.title.clone();
     if let Some(sub) = &props.subtitle {
-        ui.painter().text(
+        let short = ellipsize(&child, sub, &sub_font, budget);
+        child.painter().text(
             egui::pos2(inner.min.x, inner.min.y + 18.0),
             egui::Align2::LEFT_TOP,
-            sub,
-            theme::font_footnote(),
+            short,
+            sub_font,
             theme::text_secondary(),
         );
+        tip = format!("{tip}\n{sub}");
     }
     if let Some(trail) = &props.trailing {
-        ui.painter().text(
+        child.painter().text(
             egui::pos2(text_right, inner.center().y),
             egui::Align2::RIGHT_CENTER,
             trail,
@@ -49,7 +66,7 @@ pub fn grouped_row(ui: &mut Ui, props: &GroupedRowProps) -> egui::Response {
             theme::text_tertiary(),
         );
     }
-    ui.painter().text(
+    child.painter().text(
         egui::pos2(inner.max.x, inner.center().y),
         egui::Align2::RIGHT_CENTER,
         "›",
@@ -58,11 +75,38 @@ pub fn grouped_row(ui: &mut Ui, props: &GroupedRowProps) -> egui::Response {
     );
     if props.show_separator {
         let sep_y = rect.max.y - 0.5;
-        ui.painter().hline(
-            (inner.min.x + 12.0)..=inner.max.x,
-            sep_y,
-            theme::hairline(),
-        );
+        child
+            .painter()
+            .hline((inner.min.x + 12.0)..=inner.max.x, sep_y, theme::hairline());
     }
-    theme::pointer(response)
+    theme::pointer(response.on_hover_text(tip))
+}
+
+/// Ellipsize `text` with `…` until it fits `max_w` (measured with the same
+/// painter layout the row paints with). Char-wise pop avoids byte-index
+/// slicing on non-ASCII text; empty budget still yields a bare ellipsis.
+fn ellipsize(ui: &Ui, text: &str, font: &egui::FontId, max_w: f32) -> String {
+    if fits(ui, text, font, max_w) {
+        return text.to_owned();
+    }
+    let mut out = text.to_owned();
+    while !out.is_empty() {
+        let _ = out.pop();
+        if fits(ui, &format!("{out}…"), font, max_w) {
+            break;
+        }
+    }
+    format!("{out}…")
+}
+
+fn fits(ui: &Ui, text: &str, font: &egui::FontId, max_w: f32) -> bool {
+    if max_w <= 0.0 {
+        return false;
+    }
+    let color = theme::text_primary();
+    ui.painter()
+        .layout_no_wrap(text.to_owned(), font.clone(), color)
+        .size()
+        .x
+        <= max_w
 }

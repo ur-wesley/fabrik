@@ -174,7 +174,8 @@ fn tab_close(ui: &mut Ui, tab_rect: egui::Rect, path: &PathBuf) -> egui::Respons
     let response = ui.interact(hit, Id::new(path).with("tab_close"), Sense::click());
     if ui.is_rect_visible(hit) {
         if response.hovered() {
-            ui.painter().rect_filled(hit, theme::radius_sm(), theme::control_fill_hover());
+            ui.painter()
+                .rect_filled(hit, theme::radius_sm(), theme::control_fill_hover());
         }
         let fg = if response.hovered() {
             theme::foreground()

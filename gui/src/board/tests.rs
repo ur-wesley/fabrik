@@ -65,7 +65,7 @@ fn open_detail_seeds_preview() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     board.issues.push(Issue {
-        id: "bd-1".to_owned(),
+        id: "f-a1b2c3d4".to_owned(),
         title: "one".to_owned(),
         status: "open".to_owned(),
         priority: 1,
@@ -75,7 +75,7 @@ fn open_detail_seeds_preview() {
         description: None,
         acceptance_criteria: None,
     });
-    board.open_detail("bd-1", None);
+    board.open_detail("f-a1b2c3d4", None);
     assert_eq!(board.detail.as_ref().map(|d| d.title.as_str()), Some("one"));
 }
 
@@ -91,7 +91,7 @@ fn open_detail_uses_list_markdown() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     board.issues.push(Issue {
-        id: "bd-1".to_owned(),
+        id: "f-a1b2c3d4".to_owned(),
         title: "one".to_owned(),
         status: "open".to_owned(),
         priority: 1,
@@ -101,7 +101,7 @@ fn open_detail_uses_list_markdown() {
         description: Some("body markdown".to_owned()),
         acceptance_criteria: Some("criteria markdown".to_owned()),
     });
-    board.open_detail("bd-1", None);
+    board.open_detail("f-a1b2c3d4", None);
     let detail = board.detail.as_ref().unwrap();
     assert_eq!(detail.description.as_deref(), Some("body markdown"));
     assert_eq!(
@@ -137,20 +137,23 @@ fn stale_detail_loaded_is_ignored() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     let repo_b = PathBuf::from("b");
-    board.open_detail("bd-1", Some(&repo_b));
+    board.open_detail("f-a1b2c3d4", Some(&repo_b));
     board.apply_detail_loaded(
         Path::new("a"),
-        Box::new(detail_for("bd-1")),
+        Box::new(detail_for("f-a1b2c3d4")),
         Some(&repo_b),
     );
-    assert!(!board.detail_cache.contains_key("bd-1"));
+    assert!(!board.detail_cache.contains_key("f-a1b2c3d4"));
     board.apply_detail_loaded(
         Path::new("b"),
-        Box::new(detail_for("bd-1")),
+        Box::new(detail_for("f-a1b2c3d4")),
         Some(&repo_b),
     );
-    assert!(board.detail_cache.contains_key("bd-1"));
-    assert_eq!(board.detail.as_ref().map(|d| d.id.as_str()), Some("bd-1"));
+    assert!(board.detail_cache.contains_key("f-a1b2c3d4"));
+    assert_eq!(
+        board.detail.as_ref().map(|d| d.id.as_str()),
+        Some("f-a1b2c3d4")
+    );
 }
 
 #[test]
@@ -171,12 +174,12 @@ fn comment_post_sets_spinner_and_success_clears_draft() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     let repo_b = PathBuf::from("b");
-    board.open_detail("bd-1", Some(&repo_b));
+    board.open_detail("f-a1b2c3d4", Some(&repo_b));
     board.comment_draft = "hello".to_owned();
     board.comment_posting = true;
     board.apply_detail_loaded(
         Path::new("b"),
-        Box::new(detail_for("bd-1")),
+        Box::new(detail_for("f-a1b2c3d4")),
         Some(&repo_b),
     );
     assert!(!board.comment_posting);
@@ -189,11 +192,11 @@ fn detail_refresh_while_typing_keeps_draft() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     let repo_b = PathBuf::from("b");
-    board.open_detail("bd-1", Some(&repo_b));
+    board.open_detail("f-a1b2c3d4", Some(&repo_b));
     board.comment_draft = "typing…".to_owned();
     board.apply_detail_loaded(
         Path::new("b"),
-        Box::new(detail_for("bd-1")),
+        Box::new(detail_for("f-a1b2c3d4")),
         Some(&repo_b),
     );
     assert_eq!(board.comment_draft, "typing…");
@@ -204,11 +207,45 @@ fn open_detail_resets_composer() {
     let _guard = lock_cache_env();
     let mut board = BoardStore::new(HashSet::new());
     let repo_b = PathBuf::from("b");
-    board.open_detail("bd-1", Some(&repo_b));
+    board.open_detail("f-a1b2c3d4", Some(&repo_b));
     board.comment_draft = "hello".to_owned();
     board.comment_posting = true;
-    board.open_detail("bd-2", Some(&repo_b));
+    board.open_detail("f-b2c3d4e5", Some(&repo_b));
     assert_eq!(board.comment_draft, "");
     assert!(!board.comment_posting);
     assert!(board.comment_error.is_none());
+}
+
+#[test]
+fn resolve_issue_id_exact_prefix_substring() {
+    let mut board = BoardStore::new(HashSet::new());
+    for id in ["f-a1b2c3d4", "f-b2c3d4e5"] {
+        board.issues.push(Issue {
+            id: id.to_owned(),
+            title: id.to_owned(),
+            status: "open".to_owned(),
+            priority: 2,
+            kind: "task".to_owned(),
+            assignee: None,
+            updated_at: None,
+            description: None,
+            acceptance_criteria: None,
+        });
+    }
+    // Full f-IDs round-trip exactly.
+    assert_eq!(
+        board.resolve_issue_id("f-a1b2c3d4").as_deref(),
+        Some("f-a1b2c3d4")
+    );
+    // Short hex prefixes resolve (fuzzy fallback).
+    assert_eq!(
+        board.resolve_issue_id("f-a1b2").as_deref(),
+        Some("f-a1b2c3d4")
+    );
+    assert_eq!(
+        board.resolve_issue_id("F-B2C3").as_deref(),
+        Some("f-b2c3d4e5")
+    );
+    assert_eq!(board.resolve_issue_id("  ").as_deref(), None);
+    assert_eq!(board.resolve_issue_id("f-zzzz").as_deref(), None);
 }

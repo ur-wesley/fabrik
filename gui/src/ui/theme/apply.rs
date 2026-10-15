@@ -57,12 +57,8 @@ pub fn apply(style: &mut Style) {
     visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, foreground());
     visuals.widgets.open.corner_radius = radius();
     let accent = accent();
-    visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(
-        accent.r(),
-        accent.g(),
-        accent.b(),
-        45,
-    );
+    visuals.selection.bg_fill =
+        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 45);
     visuals.selection.stroke = Stroke::new(1.0_f32, accent);
     visuals.override_text_color = Some(foreground());
     style.visuals = visuals;

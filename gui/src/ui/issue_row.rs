@@ -15,10 +15,7 @@ pub fn issue_row(ui: &mut Ui, props: &IssueRowProps) -> Option<String> {
     let was_hovered = ui.data_mut(|d| d.get_temp::<bool>(row_id).unwrap_or(false));
 
     let (fill, stroke) = if props.row.flashed {
-        (
-            theme::flash_bg(),
-            theme::hairline(),
-        )
+        (theme::flash_bg(), theme::hairline())
     } else if props.selected {
         (
             theme::row_selected_fill(),

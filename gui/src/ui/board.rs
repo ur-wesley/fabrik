@@ -2,9 +2,127 @@ use eframe::egui::{self, ScrollArea, Ui};
 
 use crate::model::{Action, Filter, IssueRow, ViewMode};
 
-use super::{
-    chip, chrome, footer, issue_row, kanban, project_setup, project_tabs, theme,
-};
+use super::{chip, chrome, footer, issue_row, kanban, project_setup, project_tabs, theme};
+
+pub struct CreateForm<'a> {
+    pub title: &'a mut String,
+    pub body: &'a mut String,
+    pub acceptance: &'a mut String,
+    pub priority: &'a mut u8,
+    pub kind: &'a mut String,
+    pub busy: bool,
+    pub error: Option<String>,
+}
+
+pub fn can_submit_create(title: &str, busy: bool) -> bool {
+    !busy && !title.trim().is_empty()
+}
+
+pub fn create_dialog(ui: &mut Ui, form: &mut CreateForm<'_>) -> Vec<Action> {
+    let mut actions = Vec::new();
+    ui.set_min_width(560.0);
+    ui.set_max_width(600.0);
+    ui.label(
+        egui::RichText::new("New issue")
+            .size(18.0)
+            .strong()
+            .color(theme::foreground()),
+    );
+    ui.add_space(theme::SPACING);
+
+    let title_resp = ui.add(
+        egui::TextEdit::singleline(form.title)
+            .hint_text("Title (required)")
+            .desired_width(f32::INFINITY),
+    );
+    if title_resp.changed() {
+        actions.push(Action::SetCreateTitle(form.title.clone()));
+    }
+    ui.add_space(theme::SPACING);
+    let body_resp = ui.add(
+        egui::TextEdit::multiline(form.body)
+            .hint_text("Body — `fabrik issue create --body …`")
+            .desired_rows(3)
+            .desired_width(f32::INFINITY),
+    );
+    if body_resp.changed() {
+        actions.push(Action::SetCreateBody(form.body.clone()));
+    }
+    ui.add_space(theme::SPACING);
+    let acc_resp = ui.add(
+        egui::TextEdit::multiline(form.acceptance)
+            .hint_text("Acceptance criteria — `--acceptance …`")
+            .desired_rows(2)
+            .desired_width(f32::INFINITY),
+    );
+    if acc_resp.changed() {
+        actions.push(Action::SetCreateAcceptance(form.acceptance.clone()));
+    }
+    ui.add_space(theme::SPACING);
+
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("Priority")
+                .small()
+                .color(theme::dim_text()),
+        );
+        for priority in 0..=4u8 {
+            if ui
+                .selectable_value(form.priority, priority, priority.to_string())
+                .changed()
+            {
+                actions.push(Action::SetCreatePriority(*form.priority));
+            }
+        }
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Kind").small().color(theme::dim_text()));
+        for kind in crate::fabrik::ISSUE_KINDS {
+            if ui
+                .selectable_value(form.kind, kind.to_owned(), kind)
+                .changed()
+            {
+                actions.push(Action::SetCreateKind(form.kind.clone()));
+            }
+        }
+    });
+    ui.add_space(theme::SPACING);
+
+    if let Some(message) = form.error.clone() {
+        ui.label(egui::RichText::new(message).small().color(theme::sys_red()));
+        ui.add_space(theme::SPACING);
+    }
+
+    ui.horizontal(|ui| {
+        if form.busy {
+            ui.add(egui::Spinner::new());
+            ui.label(
+                egui::RichText::new("Creating…")
+                    .small()
+                    .italics()
+                    .color(theme::dim_text()),
+            );
+        } else {
+            if ui.button("Cancel").clicked() {
+                actions.push(Action::CloseCreate);
+            }
+            let create = ui.add_enabled(
+                can_submit_create(form.title, false),
+                egui::Button::new(egui::RichText::new("Create issue").small().strong()),
+            );
+            if create.clicked() {
+                actions.push(Action::SubmitCreate);
+            }
+            ui.label(
+                egui::RichText::new("priority 0-4 · `--kind task|bug|feature|epic|chore`")
+                    .small()
+                    .color(theme::dim_text()),
+            );
+        }
+    });
+    actions
+}
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct BoardView {
@@ -16,6 +134,7 @@ pub struct BoardView {
     pub view_mode: ViewMode,
     pub filter: Filter,
     pub selected: usize,
+    pub search: String,
     pub rows: Vec<IssueRow>,
     pub lanes: Vec<crate::model::KanbanLane>,
     pub collapsed: Vec<Filter>,
@@ -28,11 +147,7 @@ pub struct BoardView {
     pub git_repo: bool,
 }
 
-pub fn board(
-    ui: &mut Ui,
-    view: &BoardView,
-    route: &mut chrome::RouteToolbarView,
-) -> Vec<Action> {
+pub fn board(ui: &mut Ui, view: &BoardView, route: &mut chrome::RouteToolbarView) -> Vec<Action> {
     let mut actions = Vec::new();
     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -133,7 +248,7 @@ fn loading_body(ui: &mut Ui, view: &BoardView) {
             let name = view
                 .current_repo
                 .as_deref()
-                .filter(|label| *label != "pick a beads repo")
+                .filter(|label| *label != "pick a fabrik repo")
                 .unwrap_or(view.repo_path.as_str());
             ui.label(egui::RichText::new(format!("loading {name}…")).color(theme::dim_text()));
         },
@@ -179,9 +294,33 @@ fn list_body(ui: &mut Ui, view: &BoardView) -> Vec<Action> {
                     ui.add_space(theme::SPACING);
                 }
                 if view.rows.is_empty() {
-                    ui.label(egui::RichText::new("no issues match").color(theme::dim_text()));
+                    if view.search.trim().is_empty() && view.issue_count == 0 {
+                        ui.label(egui::RichText::new("No issues yet").color(theme::dim_text()));
+                        ui.label(
+                            egui::RichText::new(
+                                "Create one with + New, or `fabrik issue create \"title\" --json`.",
+                            )
+                            .small()
+                            .color(theme::dim_text()),
+                        );
+                    } else {
+                        ui.label(egui::RichText::new("no issues match").color(theme::dim_text()));
+                    }
                 }
             });
         });
     actions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::can_submit_create;
+
+    #[test]
+    fn create_submit_gate() {
+        assert!(can_submit_create("title", false));
+        assert!(!can_submit_create("   ", false));
+        assert!(!can_submit_create("", false));
+        assert!(!can_submit_create("title", true));
+    }
 }

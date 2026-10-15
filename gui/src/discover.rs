@@ -13,7 +13,7 @@ const PENALTY_LEADING_PER_CHAR: i32 = 12;
 const PENALTY_GAP_PER_CHAR: i32 = 8;
 const PENALTY_LEN_PER_CHAR: i32 = 1;
 
-pub fn beads_neighbors(seeds: &[PathBuf]) -> Vec<PathBuf> {
+pub fn fabrik_neighbors(seeds: &[PathBuf]) -> Vec<PathBuf> {
     // Sequential: typically 1-2 parent dirs; Rayon pool hops cost more than
     // the single `read_dir` per parent on the picker hot path.
     let parents: HashSet<PathBuf> = seeds
@@ -22,14 +22,14 @@ pub fn beads_neighbors(seeds: &[PathBuf]) -> Vec<PathBuf> {
         .collect();
     let mut found: Vec<PathBuf> = parents
         .into_iter()
-        .flat_map(|parent| read_beads_dirs(&parent))
+        .flat_map(|parent| read_fabrik_dirs(&parent))
         .collect();
     found.sort();
     found.dedup();
     found
 }
 
-fn read_beads_dirs(parent: &Path) -> Vec<PathBuf> {
+fn read_fabrik_dirs(parent: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return Vec::new();
     };
@@ -142,7 +142,7 @@ const fn is_camel_transition(prev: char, current: char) -> bool {
 /// are capped so a huge neighbor list cannot stall the UI.
 ///
 /// Contract: this function never synthesizes the typed-input row. Callers
-/// (see [`suggest`]) must pin `typed_beads(query)` on top afterwards; the
+/// (see [`suggest`]) must pin `typed_fabrik(query)` on top afterwards; the
 /// scorer must not filter that row out once the caller adds it.
 pub fn suggest_fuzzy(query: &str, items: &[RecentRepo]) -> Vec<RecentRepo> {
     const MAX_FUZZY_ITEMS: usize = 500;
@@ -196,7 +196,7 @@ pub fn workspace_from_picked(path: PathBuf) -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-pub fn typed_beads(query: &str) -> Option<PathBuf> {
+pub fn typed_fabrik(query: &str) -> Option<PathBuf> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return None;
@@ -231,11 +231,11 @@ mod tests {
     use crate::model::recent_from_path;
 
     #[test]
-    fn typed_beads_requires_db() {
-        assert!(typed_beads("").is_none());
+    fn typed_fabrik_requires_db() {
+        assert!(typed_fabrik("").is_none());
         let fabrik = PathBuf::from(r"C:\Arbeit\fabrik");
         if is_fabrik_repo(&fabrik) {
-            assert_eq!(typed_beads(r"C:\Arbeit\fabrik"), Some(fabrik));
+            assert_eq!(typed_fabrik(r"C:\Arbeit\fabrik"), Some(fabrik));
         }
     }
 

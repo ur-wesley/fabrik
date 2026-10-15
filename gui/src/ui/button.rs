@@ -66,11 +66,7 @@ pub fn button(ui: &mut Ui, props: &ButtonProps<'_>) -> Response {
                 egui::Stroke::NONE,
                 theme::accent(),
             ),
-            ButtonVariant::Ghost => (
-                Color32::TRANSPARENT,
-                egui::Stroke::NONE,
-                theme::accent(),
-            ),
+            ButtonVariant::Ghost => (Color32::TRANSPARENT, egui::Stroke::NONE, theme::accent()),
             ButtonVariant::Outline => (
                 theme::control_fill(),
                 theme::hairline(),

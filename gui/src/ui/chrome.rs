@@ -14,6 +14,7 @@ pub struct RouteToolbarView {
     pub show_rebuild: bool,
     pub rebuild_label: &'static str,
     pub rebuild_busy: bool,
+    pub show_create: bool,
 }
 
 pub fn window_nav(ui: &mut Ui, screen: Screen) -> Vec<Action> {
@@ -43,6 +44,17 @@ pub fn route_toolbar(ui: &mut Ui, view: &mut RouteToolbarView) -> Vec<Action> {
             ui.spacing_mut().interact_size.y = theme::CONTROL_H;
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
+                if view.show_create {
+                    let btn = button::button(
+                        ui,
+                        &button::ButtonProps::new("+ New")
+                            .variant(button::ButtonVariant::Secondary)
+                            .min_size(egui::vec2(84.0, theme::CONTROL_H)),
+                    );
+                    if btn.clicked() {
+                        actions.push(Action::OpenCreate);
+                    }
+                }
                 if view.show_rebuild {
                     ui.add_enabled_ui(!view.rebuild_busy, |ui| {
                         let btn = button::button(

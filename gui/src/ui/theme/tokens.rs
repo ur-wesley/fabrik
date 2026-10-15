@@ -362,6 +362,27 @@ pub fn sys_purple() -> Color32 {
     }
 }
 
+/// Distinct node tint per symbol kind for the lookup graph viewer.
+///
+/// Covers the node kinds the CLI graph emits (`file`, `symbol`), the edge
+/// kinds reused as node kinds on derived columns (`calls`, `contains`,
+/// `imports`), and common symbol kinds (`fn`, `struct`, `enum`, `trait`,
+/// …) so future CLI output already renders distinctly. Returns `None` for
+/// unknown kinds so callers can fall back to the column-role tint.
+pub fn kind_color(kind: &str) -> Option<Color32> {
+    match kind.to_ascii_lowercase().as_str() {
+        "fn" | "function" | "method" | "closure" | "calls" | "caller" | "callee" => {
+            Some(neon_cyan())
+        }
+        "struct" | "class" | "type" | "symbol" | "record" | "object" => Some(neon_violet()),
+        "enum" | "union" => Some(neon_magenta()),
+        "trait" | "interface" | "protocol" => Some(neon_green()),
+        "file" | "module" | "package" | "contains" => Some(neon_amber()),
+        "import" | "imports" | "export" => Some(traffic_minimize()),
+        _ => None,
+    }
+}
+
 pub fn text_dim() -> Color32 {
     if dark() {
         Color32::from_rgb(152, 152, 157)

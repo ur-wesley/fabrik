@@ -9,15 +9,13 @@ use serde::{Deserialize, Serialize};
 use crate::model::{Issue, Snapshot};
 
 use super::index::{TTL_SECS, touch_index, touch_index_async};
-use super::paths::{
-    atomic_write, beads_mtime, cache_root, dir_size, dirname_for, snapshot_path,
-};
+use super::paths::{atomic_write, cache_root, dir_size, dirname_for, fabrik_mtime, snapshot_path};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedSnapshot {
     pub repo: PathBuf,
     pub fetched_at: DateTime<Utc>,
-    pub beads_mtime: Option<u64>,
+    pub fabrik_mtime: Option<u64>,
     pub issues: Vec<Issue>,
     pub ready_ids: HashSet<String>,
 }
@@ -37,7 +35,7 @@ pub fn save_snapshot(repo: &Path, snapshot: &Snapshot) {
     let cached = CachedSnapshot {
         repo: repo.to_path_buf(),
         fetched_at: snapshot.fetched_at,
-        beads_mtime: beads_mtime(repo),
+        fabrik_mtime: fabrik_mtime(repo),
         issues: snapshot.issues.clone(),
         ready_ids: snapshot.ready_ids.clone(),
     };
@@ -74,8 +72,8 @@ fn load_inner(repo: &Path) -> Option<(CachedSnapshot, String, u64)> {
 #[cfg(test)]
 pub fn load_for_repo(repo: &Path) -> Option<LoadedCache> {
     let (cached, dirname, size_hint) = load_inner(repo)?;
-    let current = beads_mtime(repo);
-    let stale = current != cached.beads_mtime;
+    let current = fabrik_mtime(repo);
+    let stale = current != cached.fabrik_mtime;
     touch_index_async(dirname, repo.to_path_buf(), size_hint);
     Some(LoadedCache {
         issues: cached.issues,

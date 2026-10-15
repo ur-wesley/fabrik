@@ -114,7 +114,7 @@ pub(crate) fn atomic_write(dest: &Path, bytes: &[u8]) -> bool {
     fs::rename(&tmp, dest).is_ok()
 }
 
-pub fn beads_mtime(repo: &Path) -> Option<u64> {
+pub fn fabrik_mtime(repo: &Path) -> Option<u64> {
     let dolt = repo.join(".fabrik/dolt");
     if !dolt.is_dir() {
         return None;

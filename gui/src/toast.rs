@@ -30,7 +30,11 @@ impl ToastStore {
     }
 
     pub fn push_info(&mut self, message: String, now: Instant) {
-        if let Some(existing) = self.items.iter_mut().find(|t| t.kind == ToastKind::Info && t.message == message) {
+        if let Some(existing) = self
+            .items
+            .iter_mut()
+            .find(|t| t.kind == ToastKind::Info && t.message == message)
+        {
             existing.until = now.checked_add(INFO_TTL);
             return;
         }

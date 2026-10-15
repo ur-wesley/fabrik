@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 
 use crate::model::{
-    ALL_LANES, Filter, Issue, IssueDetail, IssueRow, KanbanLane, Snapshot, ViewMode,
-    format_clock, matches_filter, matches_search,
+    ALL_LANES, Filter, Issue, IssueDetail, IssueRow, KanbanLane, Snapshot, ViewMode, format_clock,
+    matches_filter, matches_search,
 };
 
 const FLASH_MS: u64 = 1200;
@@ -33,6 +33,19 @@ pub struct BoardStore {
     pub stale: bool,
     pub flash_until: HashMap<String, Instant>,
     previous_updated: HashMap<String, DateTime<Utc>>,
+    pub create_open: bool,
+    pub create_title: String,
+    pub create_body: String,
+    pub create_acceptance: String,
+    pub create_priority: u8,
+    pub create_kind: String,
+    pub write_busy: bool,
+    pub write_error: Option<String>,
+    pub op_by: String,
+    pub close_reason: String,
+    pub write_force: bool,
+    pub dep_target: String,
+    pub dep_kind: String,
 }
 
 impl BoardStore {
@@ -58,6 +71,19 @@ impl BoardStore {
             stale: false,
             flash_until: HashMap::new(),
             previous_updated: HashMap::new(),
+            create_open: false,
+            create_title: String::new(),
+            create_body: String::new(),
+            create_acceptance: String::new(),
+            create_priority: 2,
+            create_kind: "task".to_owned(),
+            write_busy: false,
+            write_error: None,
+            op_by: "fabrik".to_owned(),
+            close_reason: String::new(),
+            write_force: false,
+            dep_target: String::new(),
+            dep_kind: "blocks".to_owned(),
         }
     }
 
@@ -109,6 +135,11 @@ impl BoardStore {
         self.comment_error = None;
         self.flash_until.clear();
         self.previous_updated.clear();
+        self.create_open = false;
+        self.write_busy = false;
+        self.write_error = None;
+        self.close_reason.clear();
+        self.dep_target.clear();
         if repo_initialized {
             if let Some(r) = repo
                 && let Some(hit) = crate::cache::load_cached_fast(r)
@@ -153,6 +184,40 @@ impl BoardStore {
         self.stale = false;
         self.flash_until.clear();
         self.previous_updated.clear();
+        self.create_open = false;
+        self.create_title.clear();
+        self.create_body.clear();
+        self.create_acceptance.clear();
+        self.write_busy = false;
+        self.write_error = None;
+        self.close_reason.clear();
+        self.dep_target.clear();
+    }
+
+    /// Fuzzy fallback for issue selection: exact id first, then
+    /// case-insensitive id prefix (short `f-` hex prefixes), then id
+    /// substring. Used when opening an id that may be abbreviated
+    /// (live events, typed fragments); full ids always resolve exactly.
+    pub fn resolve_issue_id(&self, query: &str) -> Option<String> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if self.issues.iter().any(|issue| issue.id == trimmed) {
+            return Some(trimmed.to_owned());
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(hit) = self
+            .issues
+            .iter()
+            .find(|issue| issue.id.to_ascii_lowercase().starts_with(&lower))
+        {
+            return Some(hit.id.clone());
+        }
+        self.issues
+            .iter()
+            .find(|issue| issue.id.to_ascii_lowercase().contains(&lower))
+            .map(|issue| issue.id.clone())
     }
 
     pub fn open_detail(&mut self, id: &str, repo: Option<&PathBuf>) -> bool {
@@ -203,7 +268,12 @@ impl BoardStore {
         }
     }
 
-    pub fn apply_detail_loaded(&mut self, repo: &Path, detail: Box<IssueDetail>, current_repo: Option<&PathBuf>) {
+    pub fn apply_detail_loaded(
+        &mut self,
+        repo: &Path,
+        detail: Box<IssueDetail>,
+        current_repo: Option<&PathBuf>,
+    ) {
         if current_repo.as_ref().map(|p| p.as_path()) != Some(repo) {
             return;
         }
@@ -221,7 +291,12 @@ impl BoardStore {
         }
     }
 
-    pub fn apply_failed(&mut self, repo: Option<&Path>, message: String, current_repo: Option<&PathBuf>) {
+    pub fn apply_failed(
+        &mut self,
+        repo: Option<&Path>,
+        message: String,
+        current_repo: Option<&PathBuf>,
+    ) {
         if let Some(repo) = repo
             && current_repo.as_ref().map(|p| p.as_path()) != Some(repo)
         {

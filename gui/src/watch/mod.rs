@@ -6,8 +6,11 @@ use notify::{Config, Event, RecommendedWatcher, Watcher};
 
 use crate::model::Action;
 
+mod deferred;
 mod dispatch;
 mod msg;
+mod overview;
+mod writes;
 
 use dispatch::worker_loop;
 use msg::WorkerMsg;
@@ -98,8 +101,9 @@ impl WatchService {
         }
     }
 
-    pub fn refresh_memory(&self) {
-        if let Err(err) = self.worker_tx.send(WorkerMsg::RefreshMemory) {
+    pub fn refresh_memory(&self, repo: Option<&Path>) {
+        let msg = WorkerMsg::RefreshMemory(repo.map(Path::to_path_buf));
+        if let Err(err) = self.worker_tx.send(msg) {
             eprintln!("[worker] RefreshMemory send failed: {err:?}");
         }
     }
@@ -123,9 +127,7 @@ impl WatchService {
     }
 
     pub fn mem_get(&self, id: &str) {
-        if let Err(err) = self.worker_tx.send(WorkerMsg::MemGet {
-            id: id.to_owned(),
-        }) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemGet { id: id.to_owned() }) {
             eprintln!("[worker] MemGet send failed: {err:?}");
         }
     }
@@ -136,6 +138,15 @@ impl WatchService {
             query: query.to_owned(),
         }) {
             eprintln!("[worker] LookupExplore send failed: {err:?}");
+        }
+    }
+
+    pub fn lookup_overview(&self, repo: &Path, budget: u32) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::LookupOverview {
+            repo: repo.to_path_buf(),
+            budget,
+        }) {
+            eprintln!("[worker] LookupOverview send failed: {err:?}");
         }
     }
 
@@ -171,6 +182,163 @@ impl WatchService {
             repo: repo.to_path_buf(),
         }) {
             eprintln!("[worker] GraphBuild send failed: {err:?}");
+        }
+    }
+
+    pub fn graph_context(&self, repo: &Path, symbol: &str) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::GraphContext {
+            repo: repo.to_path_buf(),
+            symbol: symbol.to_owned(),
+        }) {
+            eprintln!("[worker] GraphContext send failed: {err:?}");
+        }
+    }
+
+    pub fn graph_impact(&self, repo: &Path, symbol: &str, depth: u32) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::GraphImpact {
+            repo: repo.to_path_buf(),
+            symbol: symbol.to_owned(),
+            depth,
+        }) {
+            eprintln!("[worker] GraphImpact send failed: {err:?}");
+        }
+    }
+
+    pub fn detect_changes(&self, repo: &Path, base_ref: &str) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::DetectChanges {
+            repo: repo.to_path_buf(),
+            base_ref: base_ref.to_owned(),
+        }) {
+            eprintln!("[worker] DetectChanges send failed: {err:?}");
+        }
+    }
+
+    pub fn explore_issue(&self, repo: &Path, query: &str, issue: &str) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::ExploreIssue {
+            repo: repo.to_path_buf(),
+            query: query.to_owned(),
+            issue: issue.to_owned(),
+        }) {
+            eprintln!("[worker] ExploreIssue send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_check(&self) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemCheck) {
+            eprintln!("[worker] MemCheck send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_stats(&self) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemStats) {
+            eprintln!("[worker] MemStats send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_timeline(&self, id: &str, limit: u32, project: Option<&Path>) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemTimeline {
+            id: id.to_owned(),
+            limit,
+            project: project.map(Path::to_path_buf),
+        }) {
+            eprintln!("[worker] MemTimeline send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_current_project(&self, repo: Option<&Path>) {
+        let msg = WorkerMsg::CurrentProject(repo.map(Path::to_path_buf));
+        if let Err(err) = self.worker_tx.send(msg) {
+            eprintln!("[worker] CurrentProject send failed: {err:?}");
+        }
+    }
+
+    pub fn create_issue(&self, repo: &Path, params: &crate::fabrik::IssueCreateParams) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::IssueCreate {
+            repo: repo.to_path_buf(),
+            params: params.clone(),
+        }) {
+            eprintln!("[worker] IssueCreate send failed: {err:?}");
+        }
+    }
+
+    pub fn claim_issue(&self, repo: &Path, id: &str, by: &str) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::IssueClaim {
+            repo: repo.to_path_buf(),
+            id: id.to_owned(),
+            by: by.to_owned(),
+        }) {
+            eprintln!("[worker] IssueClaim send failed: {err:?}");
+        }
+    }
+
+    pub fn unclaim_issue(&self, repo: &Path, id: &str, by: &str, force: bool) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::IssueUnclaim {
+            repo: repo.to_path_buf(),
+            id: id.to_owned(),
+            by: by.to_owned(),
+            force,
+        }) {
+            eprintln!("[worker] IssueUnclaim send failed: {err:?}");
+        }
+    }
+
+    pub fn close_issue(&self, repo: &Path, id: &str, reason: &str, by: &str, force: bool) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::IssueClose {
+            repo: repo.to_path_buf(),
+            id: id.to_owned(),
+            reason: reason.to_owned(),
+            by: by.to_owned(),
+            force,
+        }) {
+            eprintln!("[worker] IssueClose send failed: {err:?}");
+        }
+    }
+
+    pub fn add_dep(&self, repo: &Path, blocked: &str, blocker: &str, kind: &str) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::IssueDepAdd {
+            repo: repo.to_path_buf(),
+            blocked: blocked.to_owned(),
+            blocker: blocker.to_owned(),
+            kind: kind.to_owned(),
+        }) {
+            eprintln!("[worker] IssueDepAdd send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_save(&self, repo: Option<&Path>, params: &crate::fabrik::MemSaveParams) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemSave {
+            repo: repo.map(Path::to_path_buf),
+            params: params.clone(),
+        }) {
+            eprintln!("[worker] MemSave send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_update(&self, params: &crate::fabrik::MemUpdateParams) {
+        if let Err(err) = self.worker_tx.send(WorkerMsg::MemUpdate {
+            params: params.clone(),
+        }) {
+            eprintln!("[worker] MemUpdate send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_delete(&self, id: &str) {
+        if let Err(err) = self
+            .worker_tx
+            .send(WorkerMsg::MemDelete { id: id.to_owned() })
+        {
+            eprintln!("[worker] MemDelete send failed: {err:?}");
+        }
+    }
+
+    pub fn mem_save_prompt(&self, repo: Option<&Path>, title: &str, capture: &str) {
+        let msg = WorkerMsg::MemSavePrompt(
+            repo.map(Path::to_path_buf),
+            title.to_owned(),
+            capture.to_owned(),
+        );
+        if let Err(err) = self.worker_tx.send(msg) {
+            eprintln!("[worker] MemSavePrompt send failed: {err:?}");
         }
     }
 
@@ -240,11 +408,12 @@ mod tests {
         let (tx, rx) = channel::<WorkerMsg>();
         tx.send(WorkerMsg::Refresh).unwrap();
         tx.send(WorkerMsg::Refresh).unwrap();
-        tx.send(WorkerMsg::FetchDetail("bd-1".to_owned())).unwrap();
+        tx.send(WorkerMsg::FetchDetail("f-a1b2c3d4".to_owned()))
+            .unwrap();
         let pending = drain_coalesced(&rx);
         assert_eq!(pending.latest_repo, None);
         assert!(pending.refresh_seen);
-        assert_eq!(pending.details, vec!["bd-1".to_owned()]);
+        assert_eq!(pending.details, vec!["f-a1b2c3d4".to_owned()]);
     }
 
     #[test]
@@ -271,6 +440,39 @@ mod tests {
         assert_eq!(pending.latest_repo, None);
         assert_eq!(pending.details, Vec::<String>::new());
         assert!(pending.comments.is_empty());
+    }
+
+    #[test]
+    fn memory_messages_survive_refresh_burst() {
+        let (tx, rx) = channel::<WorkerMsg>();
+        tx.send(WorkerMsg::Refresh).unwrap();
+        tx.send(WorkerMsg::RefreshMemory(None)).unwrap();
+        tx.send(WorkerMsg::MemCheck).unwrap();
+        tx.send(WorkerMsg::MemGet {
+            id: "o-abc123".to_owned(),
+        })
+        .unwrap();
+        let pending = drain_coalesced(&rx);
+        assert!(pending.refresh_seen);
+        assert_eq!(pending.deferred.len(), 3);
+        assert!(matches!(pending.deferred[0], WorkerMsg::RefreshMemory(_)));
+        assert!(matches!(pending.deferred[1], WorkerMsg::MemCheck));
+        assert!(matches!(pending.deferred[2], WorkerMsg::MemGet { .. }));
+    }
+
+    #[test]
+    fn clear_keeps_memory_queued_after_it() {
+        let (tx, rx) = channel::<WorkerMsg>();
+        tx.send(WorkerMsg::Refresh).unwrap();
+        tx.send(WorkerMsg::Clear).unwrap();
+        tx.send(WorkerMsg::RefreshMemory(None)).unwrap();
+        let pending = drain_coalesced(&rx);
+        // Everything board-scoped queued before the Clear is dropped…
+        assert!(pending.clear_seen);
+        assert!(!pending.refresh_seen);
+        // …but the memory refresh queued after it survives in `deferred`.
+        assert_eq!(pending.deferred.len(), 1);
+        assert!(matches!(pending.deferred[0], WorkerMsg::RefreshMemory(_)));
     }
 
     #[test]

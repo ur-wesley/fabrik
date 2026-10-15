@@ -48,6 +48,9 @@ pub mod win_cast {
 /// manifest; still identifies the build family for backdrop debugging).
 #[cfg(windows)]
 pub fn log_windows_build() {
+    if !glass_debug_enabled() {
+        return;
+    }
     use windows::Win32::System::SystemInformation::{GetVersion, GetVersionExW, OSVERSIONINFOW};
     if BUILD_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         return;
@@ -127,12 +130,12 @@ pub fn resolve_hwnd_with_source(
             }
             return Some((hwnd, "frame"));
         }
-        eprintln!("[glass] hwnd_from_frame failed, trying title/foreground");
+        if glass_debug_enabled() {
+            eprintln!("[glass] hwnd_from_frame failed, trying title/foreground");
+        }
     }
     if let Some((hwnd, source)) = hwnd_from_title(MAIN_VIEWPORT_TITLE) {
-        if glass_debug_enabled() || source == "foreground" {
-            // Always log the foreground fallback: it may belong to a
-            // different process, which explains "applied but not visible".
+        if glass_debug_enabled() {
             eprintln!("[glass] hwnd resolve source={source} hwnd={hwnd:?}");
         }
         return Some((hwnd, source));
@@ -142,10 +145,14 @@ pub fn resolve_hwnd_with_source(
 
 #[cfg(windows)]
 fn log_hr(label: &str, code: i32) {
-    if code == 0 || glass_debug_enabled() {
-        eprintln!("[glass] {label} hr=0x{code:08X} ({code})");
-    } else {
-        eprintln!("[glass] {label} FAILED hr=0x{code:08X} ({code})");
+    // All HRESULT diagnostics (success and failure) stay silent by default;
+    // they only print with `--glass-debug` / `NEON_GLASS_DEBUG=1`.
+    if glass_debug_enabled() {
+        if code == 0 {
+            eprintln!("[glass] {label} hr=0x{code:08X} ({code})");
+        } else {
+            eprintln!("[glass] {label} FAILED hr=0x{code:08X} ({code})");
+        }
     }
 }
 
@@ -212,14 +219,11 @@ pub fn maintain_borderless_window(hwnd: windows::Win32::Foundation::HWND) {
                 win_cast::u32_to_long_ptr(cleared_exstyle),
             );
             exstyle_changed = true;
-            // Always log when a bit was cleared; before/after in debug mode.
+            // Only log when a bit was cleared, and only in debug mode;
+            // default runs stay quiet.
             if glass_debug_enabled() {
                 eprintln!(
                     "[glass] exstyle 0x{exstyle:08X} -> 0x{cleared_exstyle:08X} cleared layered/noredir/transparent"
-                );
-            } else {
-                eprintln!(
-                    "[glass] cleared WS_EX_LAYERED/NOREDIRECTIONBITMAP/TRANSPARENT exstyle=0x{exstyle:08X} -> 0x{cleared_exstyle:08X}"
                 );
             }
         }
@@ -284,7 +288,9 @@ pub fn apply_dwm_glass(hwnd: windows::Win32::Foundation::HWND, backdrop: GlassBa
         Ok(()) => log_hr("DwmExtendFrameIntoClientArea(-1)", 0),
         Err(err) => {
             log_hr("DwmExtendFrameIntoClientArea(-1)", err.code().0);
-            eprintln!("[glass] DwmExtendFrameIntoClientArea failed: {err:?}");
+            if glass_debug_enabled() {
+                eprintln!("[glass] DwmExtendFrameIntoClientArea failed: {err:?}");
+            }
         }
     }
 
@@ -365,16 +371,20 @@ fn hwnd_belongs_to_current_process(hwnd: windows::Win32::Foundation::HWND) -> bo
 #[cfg(windows)]
 pub fn refresh_glass(frame: Option<&eframe::Frame>, focused: bool) -> bool {
     let Some((hwnd, source)) = resolve_hwnd_with_source(frame) else {
-        eprintln!(
-            "[glass] resolve_hwnd failed (frame present: {})",
-            frame.is_some()
-        );
+        if glass_debug_enabled() {
+            eprintln!(
+                "[glass] resolve_hwnd failed (frame present: {})",
+                frame.is_some()
+            );
+        }
         return false;
     };
     if !hwnd_belongs_to_current_process(hwnd) {
-        eprintln!(
-            "[glass] refusing to style foreign hwnd {hwnd:?} via={source} pid mismatch — alpha-only compositing fallback"
-        );
+        if glass_debug_enabled() {
+            eprintln!(
+                "[glass] refusing to style foreign hwnd {hwnd:?} via={source} pid mismatch — alpha-only compositing fallback"
+            );
+        }
         return false;
     }
     maintain_borderless_window(hwnd);
@@ -392,7 +402,9 @@ pub fn refresh_glass(frame: Option<&eframe::Frame>, focused: bool) -> bool {
         GlassBackdrop::None => 0,
     };
     if LAST_LOGGED_BACKDROP.swap(code, std::sync::atomic::Ordering::Relaxed) != code {
-        eprintln!("[glass] applied {backdrop:?} focused={focused} hwnd={hwnd:?} via={source}");
+        if glass_debug_enabled() {
+            eprintln!("[glass] applied {backdrop:?} focused={focused} hwnd={hwnd:?} via={source}");
+        }
     } else if glass_debug_enabled() {
         eprintln!("[glass] reapplied {backdrop:?} focused={focused} hwnd={hwnd:?} via={source}");
     }

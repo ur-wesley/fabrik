@@ -22,6 +22,17 @@ pub struct ComposerState<'a> {
     pub error: Option<String>,
 }
 
+pub struct OpsForm<'a> {
+    pub active: bool,
+    pub by: &'a mut String,
+    pub close_reason: &'a mut String,
+    pub force: &'a mut bool,
+    pub dep_target: &'a mut String,
+    pub dep_kind: &'a mut String,
+    pub busy: bool,
+    pub error: Option<String>,
+}
+
 pub fn can_post_comment(draft: &str, posting: bool) -> bool {
     !posting && !draft.trim().is_empty()
 }
@@ -31,6 +42,7 @@ pub fn popup(
     view: &DetailView,
     cache: &mut CommonMarkCache,
     composer: ComposerState<'_>,
+    ops: &mut OpsForm<'_>,
 ) -> Option<Action> {
     ui.set_min_width(820.0);
     ui.set_max_width(860.0);
@@ -127,7 +139,7 @@ pub fn popup(
     }
 
     if let Some(detail) = &view.detail {
-        if let Some(act) = popup_body(ui, detail, cache, composer) {
+        if let Some(act) = popup_body(ui, detail, cache, composer, ops) {
             return Some(act);
         }
     } else if let Some(id) = &view.loading_id {
@@ -149,6 +161,7 @@ fn popup_body(
     detail: &IssueDetail,
     cache: &mut CommonMarkCache,
     composer: ComposerState<'_>,
+    ops: &mut OpsForm<'_>,
 ) -> Option<Action> {
     let mut action = None;
     let avail_w = ui.available_width();
@@ -187,16 +200,14 @@ fn popup_body(
                             ui.add_space(theme::SPACING);
                         }
 
-                        if let Some(act) =
-                            comments::comments_section(ui, detail, cache, composer)
-                        {
+                        if let Some(act) = comments::comments_section(ui, detail, cache, composer) {
                             action = Some(act);
                         }
                         if action.is_none() {
                             ui.add_space(theme::SPACING);
                         }
 
-                        if let Some(act) = deps::dependency_section(ui, detail) {
+                        if let Some(act) = deps::dependency_section(ui, detail, ops) {
                             action = Some(act);
                         }
                     });
@@ -216,7 +227,7 @@ fn popup_body(
             egui::vec2(sidebar_avail, ui.available_height()),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
-                if let Some(act) = sidebar::sidebar(ui, detail) {
+                if let Some(act) = sidebar::sidebar(ui, detail, ops) {
                     action = Some(act);
                 }
             },
@@ -263,8 +274,8 @@ mod tests {
     #[test]
     fn two_column_structure() {
         let detail = IssueDetail {
-            id: "bd-neon-1".to_owned(),
-            title: "Test Bead".to_owned(),
+            id: "f-a1b2c3d4".to_owned(),
+            title: "Test issue".to_owned(),
             description: Some("Here is description".to_owned()),
             acceptance_criteria: None,
             status: "open".to_owned(),
@@ -284,13 +295,13 @@ mod tests {
             comment_count: 2,
             comments: Vec::new(),
         };
-        assert_eq!(detail.id, "bd-neon-1");
+        assert_eq!(detail.id, "f-a1b2c3d4");
     }
 
     #[test]
     fn full_metadata_sidebar() {
         let detail = IssueDetail {
-            id: "bd-12".to_owned(),
+            id: "f-c3d4e5f6".to_owned(),
             title: "Metadata Test".to_owned(),
             description: None,
             acceptance_criteria: None,
@@ -299,7 +310,7 @@ mod tests {
             kind: "bug".to_owned(),
             assignee: Some("bob".to_owned()),
             owner: None,
-            parent: Some("bd-10".to_owned()),
+            parent: Some("f-d4e5f607".to_owned()),
             created_at: None,
             updated_at: None,
             started_at: None,
@@ -311,14 +322,14 @@ mod tests {
             comment_count: 0,
             comments: Vec::new(),
         };
-        assert_eq!(detail.parent.as_deref(), Some("bd-10"));
+        assert_eq!(detail.parent.as_deref(), Some("f-d4e5f607"));
         assert_eq!(detail.assignee.as_deref(), Some("bob"));
     }
 
     #[test]
     fn empty_timestamps_hidden() {
         let detail = IssueDetail {
-            id: "bd-3".to_owned(),
+            id: "f-e5f60718".to_owned(),
             title: "Timestamps Test".to_owned(),
             description: None,
             acceptance_criteria: None,
@@ -346,7 +357,7 @@ mod tests {
     #[test]
     fn breadcrumb_nav() {
         let detail = IssueDetail {
-            id: "bd-neon-4.2".to_owned(),
+            id: "f-f6071829".to_owned(),
             title: "Subtask".to_owned(),
             description: None,
             acceptance_criteria: None,
@@ -355,7 +366,7 @@ mod tests {
             kind: "task".to_owned(),
             assignee: None,
             owner: None,
-            parent: Some("bd-neon-4".to_owned()),
+            parent: Some("f-0718293a".to_owned()),
             created_at: None,
             updated_at: None,
             started_at: None,
@@ -367,7 +378,7 @@ mod tests {
             comment_count: 0,
             comments: Vec::new(),
         };
-        assert_eq!(detail.parent.as_deref(), Some("bd-neon-4"));
+        assert_eq!(detail.parent.as_deref(), Some("f-0718293a"));
     }
 
     #[test]

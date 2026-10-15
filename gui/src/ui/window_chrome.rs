@@ -137,7 +137,8 @@ fn traffic_lights(ui: &mut Ui, bar: egui::Rect, focused: bool) {
         let center = egui::pos2(cx, cy);
         let hit = egui::Rect::from_center_size(center, egui::vec2(TRAFFIC_SIZE, TRAFFIC_SIZE));
         let response = ui.interact(hit, ui.id().with(("traffic", index)), Sense::click());
-        ui.painter().circle_filled(center, TRAFFIC_SIZE * 0.5, color);
+        ui.painter()
+            .circle_filled(center, TRAFFIC_SIZE * 0.5, color);
         if response.clicked() {
             match index {
                 0 => ui.ctx().send_viewport_cmd(ViewportCommand::Close),

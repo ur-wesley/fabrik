@@ -3,8 +3,13 @@ use eframe::egui::{self, Ui};
 use crate::model::{Action, DepNode, IssueDetail};
 
 use super::super::{badge, icons, theme};
+use super::OpsForm;
 
-pub(super) fn dependency_section(ui: &mut Ui, detail: &IssueDetail) -> Option<Action> {
+pub(super) fn dependency_section(
+    ui: &mut Ui,
+    detail: &IssueDetail,
+    ops: &mut OpsForm<'_>,
+) -> Option<Action> {
     let mut action = None;
 
     ui.horizontal(|ui| {
@@ -89,8 +94,51 @@ pub(super) fn dependency_section(ui: &mut Ui, detail: &IssueDetail) -> Option<Ac
                     ui.add_space(theme::SPACING);
                 }
             }
+
+            ui.add_space(theme::SPACING);
+            if let Some(act) = dep_add_row(ui, ops) {
+                action = Some(act);
+            }
         });
 
+    action
+}
+
+fn dep_add_row(ui: &mut Ui, ops: &mut OpsForm<'_>) -> Option<Action> {
+    let mut action = None;
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("blocker")
+                .small()
+                .color(theme::dim_text()),
+        );
+        let target_resp = ui.add(
+            egui::TextEdit::singleline(ops.dep_target)
+                .hint_text("f-…")
+                .desired_width(130.0),
+        );
+        if target_resp.changed() {
+            action = Some(Action::SetDepTarget((*ops.dep_target).clone()));
+        }
+        for kind in crate::fabrik::DEP_KINDS {
+            if ui
+                .selectable_value(ops.dep_kind, kind.to_owned(), kind)
+                .changed()
+            {
+                action = Some(Action::SetDepKind((*ops.dep_kind).clone()));
+            }
+        }
+        let ready = !ops.busy && !ops.dep_target.trim().is_empty();
+        let add = ui.add_enabled(ready, egui::Button::new("Add"));
+        if add.clicked() {
+            action = Some(Action::SubmitDepAdd);
+        }
+    });
+    ui.label(
+        egui::RichText::new("`fabrik issue dep <blocked> <blocker> --kind blocks|relates`")
+            .small()
+            .color(theme::dim_text()),
+    );
     action
 }
 

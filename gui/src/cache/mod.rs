@@ -6,7 +6,7 @@ mod snapshot;
 #[allow(unused_imports)]
 pub use detail::{load_detail, save_detail};
 #[allow(unused_imports)]
-pub use paths::{beads_mtime, dirname_for};
+pub use paths::{dirname_for, fabrik_mtime};
 #[allow(unused_imports)]
 pub use snapshot::{
     CachedSnapshot, LoadedCache, load_cached_fast, save_snapshot, save_snapshot_async,
@@ -31,7 +31,9 @@ mod tests {
     use crate::model::{Issue, IssueDetail, Snapshot};
 
     use super::TEST_ENV_LOCK as ENV_LOCK;
-    use super::{beads_mtime, dirname_for, load_detail, load_for_repo, save_detail, save_snapshot};
+    use super::{
+        dirname_for, fabrik_mtime, load_detail, load_for_repo, save_detail, save_snapshot,
+    };
     use crate::cache::index::CacheIndex;
     use crate::cache::index::MAX_ENTRIES;
     use crate::cache::paths::snapshot_path;
@@ -43,7 +45,9 @@ mod tests {
     }
 
     fn temp_root(name: &str) -> PathBuf {
-        let base = std::env::temp_dir().join("fabrik/neon-cache-tests").join(name);
+        let base = std::env::temp_dir()
+            .join("fabrik/neon-cache-tests")
+            .join(name);
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         base
@@ -97,10 +101,11 @@ mod tests {
         }
     }
 
-    fn repo_with_beads(root: &std::path::Path, name: &str) -> PathBuf {
+    fn repo_with_fabrik(root: &std::path::Path, name: &str) -> PathBuf {
         let repo = root.join(name);
-        std::fs::create_dir_all(repo.join(".beads")).unwrap();
-        std::fs::write(repo.join(".beads").join("issues.jsonl"), "{}\n").unwrap();
+        std::fs::create_dir_all(repo.join(".fabrik").join("dolt")).unwrap();
+        std::fs::write(repo.join(".fabrik").join("config.yaml"), "apps: []\n").unwrap();
+        std::fs::write(repo.join(".fabrik").join("dolt").join("marker"), "{}\n").unwrap();
         repo
     }
 
@@ -109,7 +114,7 @@ mod tests {
         let _guard = lock_env();
         let root = temp_root("roundtrip");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
-        let repo = repo_with_beads(&root, "repo-a");
+        let repo = repo_with_fabrik(&root, "repo-a");
         let snap = snapshot("x", &["a-1", "a-2"]);
         let snap = Snapshot {
             repo: repo.clone(),
@@ -132,7 +137,7 @@ mod tests {
         let _guard = lock_env();
         let root = temp_root("corrupt");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
-        let repo = repo_with_beads(&root, "repo-b");
+        let repo = repo_with_fabrik(&root, "repo-b");
         let snap = Snapshot {
             repo: repo.clone(),
             ..snapshot("x", &["b-1"])
@@ -149,7 +154,7 @@ mod tests {
         let _guard = lock_env();
         let root = temp_root("stale-fresh");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
-        let repo = repo_with_beads(&root, "repo-c");
+        let repo = repo_with_fabrik(&root, "repo-c");
         let old = Snapshot {
             repo: repo.clone(),
             ..snapshot("x", &["old-1"])
@@ -174,7 +179,7 @@ mod tests {
         let root = temp_root("evict");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
         for i in 0..15 {
-            let repo = repo_with_beads(&root, &format!("repo-{i}"));
+            let repo = repo_with_fabrik(&root, &format!("repo-{i}"));
             let snap = Snapshot {
                 repo: repo.clone(),
                 ..snapshot("x", &["e-1"])
@@ -193,7 +198,7 @@ mod tests {
         let _guard = lock_env();
         let root = temp_root("mtime");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
-        let repo = repo_with_beads(&root, "repo-m");
+        let repo = repo_with_fabrik(&root, "repo-m");
         let snap = Snapshot {
             repo: repo.clone(),
             ..snapshot("x", &["m-1"])
@@ -204,11 +209,11 @@ mod tests {
         let future = SystemTime::now() + Duration::from_secs(60);
         let handle = std::fs::File::options()
             .write(true)
-            .open(repo.join(".beads").join("issues.jsonl"))
+            .open(repo.join(".fabrik").join("dolt").join("marker"))
             .unwrap();
         handle.set_modified(future).unwrap();
         drop(handle);
-        assert!(beads_mtime(&repo).is_some());
+        assert!(fabrik_mtime(&repo).is_some());
         let second = load_for_repo(&repo).expect("stale-while-revalidate");
         assert_eq!(second.issues.len(), 1);
         assert!(second.stale);
@@ -220,8 +225,8 @@ mod tests {
         let _guard = lock_env();
         let root = temp_root("nopollute");
         unsafe { std::env::set_var("NEON_CACHE_DIR", &root) };
-        let repo_a = repo_with_beads(&root, "repo-pa");
-        let repo_b = repo_with_beads(&root, "repo-pb");
+        let repo_a = repo_with_fabrik(&root, "repo-pa");
+        let repo_b = repo_with_fabrik(&root, "repo-pb");
         let snap_a = Snapshot {
             repo: repo_a.clone(),
             ..snapshot("x", &["only-a"])

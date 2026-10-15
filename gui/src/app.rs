@@ -6,14 +6,15 @@ use egui_commonmark::CommonMarkCache;
 use crate::effects::Effects;
 use crate::model::{Action, Screen};
 use crate::platform;
+use crate::store::MAX_TAB_SLOT;
 use crate::store::Store;
+use crate::ui::{
+    board, chrome, detail, lookup, mem_form, memory, project_picker, settings, theme, toast,
+    window_chrome,
+};
 use crate::views::{
     apply_route_toolbar, board_view, lookup_pane_view, memory_pane_view, route_toolbar_view,
     settings_pane_view, window_nav_screen,
-};
-use crate::store::MAX_TAB_SLOT;
-use crate::ui::{
-    board, chrome, detail, lookup, memory, project_picker, settings, theme, toast, window_chrome,
 };
 use crate::watch::RepoWorker;
 
@@ -40,18 +41,18 @@ fn tab_slot(index: usize) -> Option<u8> {
 }
 
 pub struct NeonApp {
-    state: Store,
-    worker: RepoWorker,
-    subscribe: crate::subscribe::SubscribeService,
-    last_tick: Instant,
-    markdown: CommonMarkCache,
-    last_focus: Option<bool>,
-    last_maximized: Option<bool>,
-    glass_applied: bool,
-    glass_tick: u64,
-    last_egui_theme: Option<egui::Theme>,
-    mem_query_pending: Option<(String, Instant)>,
-    lookup_query_pending: Option<(String, Instant)>,
+    pub(crate) state: Store,
+    pub(crate) worker: RepoWorker,
+    pub(crate) subscribe: crate::subscribe::SubscribeService,
+    pub(crate) last_tick: Instant,
+    pub(crate) markdown: CommonMarkCache,
+    pub(crate) last_focus: Option<bool>,
+    pub(crate) last_maximized: Option<bool>,
+    pub(crate) glass_applied: bool,
+    pub(crate) glass_tick: u64,
+    pub(crate) last_egui_theme: Option<egui::Theme>,
+    pub(crate) mem_query_pending: Option<(String, Instant)>,
+    pub(crate) lookup_query_pending: Option<(String, Instant)>,
 }
 
 impl NeonApp {
@@ -91,11 +92,12 @@ impl NeonApp {
             app.worker.set_repo(&repo);
             app.subscribe.set_repo(Some(&repo));
         }
-        app.worker.refresh_memory();
+        app.worker
+            .refresh_memory(app.state.workspace.repo.clone().as_deref());
         app
     }
 
-    fn effects(&mut self) -> Effects<'_> {
+    pub(crate) fn effects(&mut self) -> Effects<'_> {
         Effects {
             state: &mut self.state,
             worker: &mut self.worker,
@@ -148,6 +150,12 @@ impl NeonApp {
             if input.key_pressed(egui::Key::Escape) {
                 if self.state.workspace.picker_open {
                     actions.push(Action::ClosePicker);
+                } else if self.state.memory.mem_delete_confirm.is_some() {
+                    actions.push(Action::CancelMemDelete);
+                } else if self.state.memory.mem_form_open {
+                    actions.push(Action::CloseMemForm);
+                } else if self.state.memory.mem_prompt_open {
+                    actions.push(Action::CloseMemPrompt);
                 } else if self.state.workspace.screen == Screen::Detail {
                     actions.push(Action::Back);
                 } else if self.state.memory.mem_detail_id.is_some() {
@@ -218,6 +226,8 @@ impl NeonApp {
             self.effects().apply(actions);
         }
         if self.state.workspace.screen != Screen::Detail {
+            self.show_create_popup(ctx);
+            self.show_memory_popups(ctx);
             return;
         }
         let view = detail::DetailView {
@@ -229,12 +239,22 @@ impl NeonApp {
             posting: self.state.board.comment_posting,
             error: self.state.board.comment_error.clone(),
         };
+        let mut ops = detail::OpsForm {
+            active: view.detail.as_ref().is_some_and(|d| d.status == "active"),
+            by: &mut self.state.board.op_by,
+            close_reason: &mut self.state.board.close_reason,
+            force: &mut self.state.board.write_force,
+            dep_target: &mut self.state.board.dep_target,
+            dep_kind: &mut self.state.board.dep_kind,
+            busy: self.state.board.write_busy,
+            error: self.state.board.write_error.clone(),
+        };
         let frame = theme::dialog_frame(ctx.global_style().as_ref());
         let modal = egui::Modal::new(egui::Id::new("issue_popup"))
             .frame(frame)
             .backdrop_color(theme::dialog_backdrop())
             .show(ctx, |ui| {
-                detail::popup(ui, &view, &mut self.markdown, composer)
+                detail::popup(ui, &view, &mut self.markdown, composer, &mut ops)
             });
         let should_close = modal.should_close();
         let mut actions = Vec::new();
@@ -243,6 +263,34 @@ impl NeonApp {
         }
         if should_close {
             actions.push(Action::Back);
+        }
+        self.effects().apply(actions);
+        self.show_create_popup(ctx);
+        self.show_memory_popups(ctx);
+    }
+
+    fn show_create_popup(&mut self, ctx: &egui::Context) {
+        if !self.state.board.create_open {
+            return;
+        }
+        let mut form = crate::ui::board::CreateForm {
+            title: &mut self.state.board.create_title,
+            body: &mut self.state.board.create_body,
+            acceptance: &mut self.state.board.create_acceptance,
+            priority: &mut self.state.board.create_priority,
+            kind: &mut self.state.board.create_kind,
+            busy: self.state.board.write_busy,
+            error: self.state.board.write_error.clone(),
+        };
+        let frame = theme::dialog_frame(ctx.global_style().as_ref());
+        let modal = egui::Modal::new(egui::Id::new("create_issue"))
+            .frame(frame)
+            .backdrop_color(theme::dialog_backdrop())
+            .show(ctx, |ui| crate::ui::board::create_dialog(ui, &mut form));
+        let should_close = modal.should_close();
+        let mut actions = modal.inner;
+        if should_close {
+            actions.push(Action::CloseCreate);
         }
         self.effects().apply(actions);
     }
@@ -296,34 +344,39 @@ impl eframe::App for NeonApp {
                 let nav_screen = window_nav_screen(&self.state);
                 let screen = self.state.workspace.screen;
                 let mut route_toolbar = route_toolbar_view(&self.state);
-                let (title_actions, body_actions) = window_chrome::shell(ui, |title_ui, body_ui| {
-                    let title_actions = chrome::window_nav(title_ui, nav_screen);
+                let (title_actions, body_actions) =
+                    window_chrome::shell(ui, |title_ui, body_ui| {
+                        let title_actions = chrome::window_nav(title_ui, nav_screen);
 
-                    let body_actions = match screen {
-                        Screen::Memory => {
-                            let view = memory_pane_view(&self.state);
-                            memory::memory_pane(
-                                body_ui,
-                                &view,
-                                &mut route_toolbar,
-                                &mut self.markdown,
-                            )
-                        }
-                        Screen::Lookup => {
-                            let view = lookup_pane_view(&self.state);
-                            lookup::lookup_pane(body_ui, &view, &mut route_toolbar)
-                        }
-                        Screen::Settings => {
-                            let view = settings_pane_view(&self.state);
-                            settings::settings_pane(body_ui, &view)
-                        }
-                        Screen::Board | Screen::Detail => {
-                            let view = board_view(&self.state);
-                            board::board(body_ui, &view, &mut route_toolbar)
-                        }
-                    };
-                    (title_actions, body_actions)
-                });
+                        let body_actions = match screen {
+                            Screen::Memory => {
+                                let view = memory_pane_view(&self.state);
+                                let mut form = mem_form::MemForm::from_store(&self.state.memory);
+                                let mut actions = memory::memory_pane(
+                                    body_ui,
+                                    &view,
+                                    &mut route_toolbar,
+                                    &mut self.markdown,
+                                    &mut form,
+                                );
+                                form.flush(&mut actions, &self.state.memory);
+                                actions
+                            }
+                            Screen::Lookup => {
+                                let view = lookup_pane_view(&self.state);
+                                lookup::lookup_pane(body_ui, &view, &mut route_toolbar)
+                            }
+                            Screen::Settings => {
+                                let view = settings_pane_view(&self.state);
+                                settings::settings_pane(body_ui, &view)
+                            }
+                            Screen::Board | Screen::Detail => {
+                                let view = board_view(&self.state);
+                                board::board(body_ui, &view, &mut route_toolbar)
+                            }
+                        };
+                        (title_actions, body_actions)
+                    });
                 if screen != Screen::Settings {
                     apply_route_toolbar(&mut self.state, &route_toolbar);
                 }

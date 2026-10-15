@@ -19,12 +19,9 @@ pub fn project_setup_banner(ui: &mut Ui, props: &ProjectSetupProps) -> Vec<Actio
                 .color(theme::text_primary()),
         );
         ui.label(
-            egui::RichText::new(format!(
-                "{} is not initialized for Fabrik yet.",
-                props.path
-            ))
-            .font(theme::font_callout())
-            .color(theme::foreground_dimmed()),
+            egui::RichText::new(format!("{} is not initialized for Fabrik yet.", props.path))
+                .font(theme::font_callout())
+                .color(theme::foreground_dimmed()),
         );
         if !props.git {
             ui.label(

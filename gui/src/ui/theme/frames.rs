@@ -1,6 +1,4 @@
-use eframe::egui::{
-    self, Color32, FontFamily, FontId, InnerResponse, Margin, Response, Sense, Ui,
-};
+use eframe::egui::{self, Color32, FontFamily, FontId, InnerResponse, Margin, Response, Sense, Ui};
 
 use super::metrics::{PAD_I8, radius, radius_card, radius_dialog};
 use super::tokens::{
@@ -30,6 +28,7 @@ pub fn toast_frame() -> egui::Frame {
         .corner_radius(radius())
 }
 
+#[allow(dead_code)]
 pub fn font_large_title() -> FontId {
     FontId::new(26.0, FontFamily::Proportional)
 }

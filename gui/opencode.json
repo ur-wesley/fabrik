@@ -168,10 +168,12 @@
   "default_agent": "plan",
   "mcp": {
     "fabrik": {
-      "args": [
+      "command": [
+        "fabrik",
         "mcp"
       ],
-      "command": "fabrik"
+      "enabled": true,
+      "type": "local"
     }
   }
 }

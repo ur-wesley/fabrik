@@ -259,11 +259,7 @@ impl WorkspaceStore {
         }
     }
 
-    pub fn persist_snapshot(
-        &self,
-        collapsed_lanes: &[String],
-        mem_filter_project: bool,
-    ) {
+    pub fn persist_snapshot(&self, collapsed_lanes: &[String], mem_filter_project: bool) {
         let state = PersistedState {
             recents: self.recents.clone(),
             open_tabs: self.open_tabs.clone(),
@@ -295,7 +291,12 @@ fn state_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME").or_else(|| {
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config").into_os_string())
     });
-    base.map(|b| PathBuf::from(b).join("fabrik").join("neon").join("state.json"))
+    base.map(|b| {
+        PathBuf::from(b)
+            .join("fabrik")
+            .join("neon")
+            .join("state.json")
+    })
 }
 
 fn sanitize_paths(paths: &[PathBuf]) -> Vec<PathBuf> {

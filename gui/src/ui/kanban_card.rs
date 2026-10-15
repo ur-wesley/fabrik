@@ -14,10 +14,7 @@ pub fn kanban_card(ui: &mut Ui, props: &KanbanCardProps) -> Option<String> {
     let was_hovered = ui.data_mut(|d| d.get_temp::<bool>(card_id).unwrap_or(false));
 
     let (fill, stroke) = if props.row.flashed {
-        (
-            theme::flash_bg(),
-            theme::hairline(),
-        )
+        (theme::flash_bg(), theme::hairline())
     } else if was_hovered {
         (
             theme::surface_hover(),

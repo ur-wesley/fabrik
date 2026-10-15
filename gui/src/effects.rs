@@ -7,6 +7,11 @@ use crate::watch::RepoWorker;
 
 const QUERY_DEBOUNCE_MS: u64 = 250;
 
+fn opt_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then_some(trimmed.to_owned())
+}
+
 pub struct Effects<'a> {
     pub state: &'a mut AppState,
     pub worker: &'a mut RepoWorker,
@@ -25,10 +30,13 @@ impl Effects<'_> {
     fn apply_one(&mut self, action: Action) {
         match action {
             Action::OpenDetail(id) => {
+                // Resolve abbreviated `f-` fragments against the loaded
+                // board so the worker fetches the full id.
+                let resolved = self.state.board.resolve_issue_id(&id).unwrap_or(id);
                 if self.state.workspace.repo.is_some() {
-                    self.worker.request_detail(&id);
+                    self.worker.request_detail(&resolved);
                 }
-                let followups = self.state.reduce(Action::OpenDetail(id));
+                let followups = self.state.reduce(Action::OpenDetail(resolved));
                 self.apply(followups);
             }
             Action::PostComment => {
@@ -42,6 +50,125 @@ impl Effects<'_> {
                     }
                 }
                 let followups = self.state.reduce(Action::PostComment);
+                self.apply(followups);
+            }
+            Action::SubmitCreate => {
+                let followups = self.state.reduce(Action::SubmitCreate);
+                if self.state.board.write_busy
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    let params = crate::fabrik::IssueCreateParams {
+                        title: self.state.board.create_title.clone(),
+                        body: self.state.board.create_body.clone(),
+                        acceptance: self.state.board.create_acceptance.clone(),
+                        priority: self.state.board.create_priority,
+                        kind: self.state.board.create_kind.clone(),
+                    };
+                    self.worker.create_issue(&repo, &params);
+                }
+                self.apply(followups);
+            }
+            Action::ClaimIssue(id) => {
+                let followups = self.state.reduce(Action::ClaimIssue(id.clone()));
+                if self.state.board.write_busy
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    let by = self.state.board.op_by.clone();
+                    self.worker.claim_issue(&repo, &id, &by);
+                }
+                self.apply(followups);
+            }
+            Action::UnclaimIssue(id) => {
+                let followups = self.state.reduce(Action::UnclaimIssue(id.clone()));
+                if self.state.board.write_busy
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    let by = self.state.board.op_by.clone();
+                    let force = self.state.board.write_force;
+                    self.worker.unclaim_issue(&repo, &id, &by, force);
+                }
+                self.apply(followups);
+            }
+            Action::CloseIssue(id) => {
+                let followups = self.state.reduce(Action::CloseIssue(id.clone()));
+                if self.state.board.write_busy
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    let by = self.state.board.op_by.clone();
+                    let reason = self.state.board.close_reason.clone();
+                    let force = self.state.board.write_force;
+                    self.worker.close_issue(&repo, &id, &reason, &by, force);
+                }
+                self.apply(followups);
+            }
+            Action::SubmitDepAdd => {
+                let followups = self.state.reduce(Action::SubmitDepAdd);
+                if self.state.board.write_busy
+                    && let (Some(repo), Some(blocked)) = (
+                        self.state.workspace.repo.clone(),
+                        self.state.board.detail_id.clone(),
+                    )
+                {
+                    let blocker = self.state.board.dep_target.clone();
+                    let kind = self.state.board.dep_kind.clone();
+                    self.worker.add_dep(&repo, &blocked, &blocker, &kind);
+                }
+                self.apply(followups);
+            }
+            Action::WriteOk(_) | Action::MemWriteOk(_) | Action::MemDeleted(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::SubmitMemSave => {
+                let followups = self.state.reduce(Action::SubmitMemSave);
+                if self.state.memory.mem_write_busy {
+                    let repo = self.state.workspace.repo.clone();
+                    let params = crate::fabrik::MemSaveParams {
+                        title: self.state.memory.mem_form_title.clone(),
+                        body: self.state.memory.mem_form_body.clone(),
+                        kind: self.state.memory.mem_form_kind.clone(),
+                        topic_key: opt_text(&self.state.memory.mem_form_topic),
+                        symbol_id: opt_text(&self.state.memory.mem_form_symbol),
+                    };
+                    self.worker.mem_save(repo.as_deref(), &params);
+                }
+                self.apply(followups);
+            }
+            Action::SubmitMemUpdate => {
+                let followups = self.state.reduce(Action::SubmitMemUpdate);
+                if self.state.memory.mem_write_busy
+                    && let Some(id) = self.state.memory.mem_editing.clone()
+                {
+                    let params = crate::fabrik::MemUpdateParams {
+                        id,
+                        title: opt_text(&self.state.memory.mem_form_title),
+                        body: opt_text(&self.state.memory.mem_form_body),
+                        kind: opt_text(&self.state.memory.mem_form_kind),
+                        topic_key: opt_text(&self.state.memory.mem_form_topic),
+                        symbol_id: opt_text(&self.state.memory.mem_form_symbol),
+                    };
+                    self.worker.mem_update(&params);
+                }
+                self.apply(followups);
+            }
+            Action::ConfirmMemDelete => {
+                let followups = self.state.reduce(Action::ConfirmMemDelete);
+                if self.state.memory.mem_write_busy
+                    && let Some(id) = self.state.memory.mem_delete_confirm.clone()
+                {
+                    self.worker.mem_delete(&id);
+                }
+                self.apply(followups);
+            }
+            Action::SubmitMemPrompt => {
+                let followups = self.state.reduce(Action::SubmitMemPrompt);
+                if self.state.memory.mem_write_busy {
+                    let repo = self.state.workspace.repo.clone();
+                    let title = self.state.memory.mem_prompt_title.clone();
+                    let capture = self.state.memory.mem_prompt_capture.clone();
+                    self.worker
+                        .mem_save_prompt(repo.as_deref(), &title, &capture);
+                }
                 self.apply(followups);
             }
             Action::Refresh => {
@@ -70,7 +197,8 @@ impl Effects<'_> {
                 self.apply(followups);
             }
             Action::RefreshMemory => {
-                self.worker.refresh_memory();
+                let repo = self.state.workspace.repo.clone();
+                self.worker.refresh_memory(repo.as_deref());
                 let followups = self.state.reduce(Action::RefreshMemory);
                 if !self.state.memory.mem_search.trim().is_empty() {
                     self.schedule_mem_search(self.state.memory.mem_search.clone());
@@ -124,6 +252,17 @@ impl Effects<'_> {
                 let followups = self.state.reduce(Action::RefreshLookup);
                 self.apply(followups);
             }
+            Action::FetchGraphOverview { repo, budget } => {
+                self.worker.lookup_overview(&repo, budget);
+                let followups = self
+                    .state
+                    .reduce(Action::FetchGraphOverview { repo, budget });
+                self.apply(followups);
+            }
+            Action::LookupOverviewLoaded { .. } => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
             Action::RunGraphBuild => {
                 let followups = self.state.reduce(Action::RunGraphBuild);
                 if self.state.lookup.lookup_build_in_progress {
@@ -135,6 +274,96 @@ impl Effects<'_> {
             }
             Action::GraphBuildDone(path) => {
                 let followups = self.state.reduce(Action::GraphBuildDone(path));
+                self.apply(followups);
+            }
+            Action::FetchGraphContext(symbol) => {
+                // Symbol-only gate (mirrors the `is_issue_id` write guards):
+                // file anchors (`file:…`) fail live with
+                // `node sym:file:… not found`, so never spawn — the header
+                // shows path info + hint instead of firing.
+                if crate::model::is_symbol_anchor(symbol.trim())
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    self.worker.graph_context(&repo, &symbol);
+                }
+                let followups = self.state.reduce(Action::FetchGraphContext(symbol));
+                self.apply(followups);
+            }
+            Action::GraphContextLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::FetchGraphImpact { symbol, depth } => {
+                // Same symbol-only gate as context: file anchors never spawn.
+                if crate::model::is_symbol_anchor(symbol.trim())
+                    && let Some(repo) = self.state.workspace.repo.clone()
+                {
+                    self.worker.graph_impact(&repo, &symbol, depth);
+                }
+                let followups = self
+                    .state
+                    .reduce(Action::FetchGraphImpact { symbol, depth });
+                self.apply(followups);
+            }
+            Action::GraphImpactLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::FetchDetectChanges(base_ref) => {
+                if let Some(repo) = self.state.workspace.repo.clone() {
+                    self.worker.detect_changes(&repo, &base_ref);
+                }
+                let followups = self.state.reduce(Action::FetchDetectChanges(base_ref));
+                self.apply(followups);
+            }
+            Action::DetectChangesLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::ExploreIssueSeed { issue, query } => {
+                if let Some(repo) = self.state.workspace.repo.clone() {
+                    self.worker.explore_issue(&repo, &query, &issue);
+                }
+                let followups = self.state.reduce(Action::ExploreIssueSeed { issue, query });
+                self.apply(followups);
+            }
+            Action::LookupClearInspect => {
+                let followups = self.state.reduce(Action::LookupClearInspect);
+                self.apply(followups);
+            }
+            Action::MemCheckLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::MemStatsLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::FetchMemTimeline { id, limit } => {
+                let project = self.state.mem_project_filter();
+                self.worker.mem_timeline(&id, limit, project.as_deref());
+                let followups = self.state.reduce(Action::FetchMemTimeline { id, limit });
+                self.apply(followups);
+            }
+            Action::MemTimelineLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::CurrentProjectLoaded(_) => {
+                let followups = self.state.reduce(action);
+                self.apply(followups);
+            }
+            Action::RefreshDiagnostics => {
+                let repo = self.state.workspace.repo.clone();
+                self.worker.mem_check();
+                self.worker.mem_stats();
+                self.worker.mem_current_project(repo.as_deref());
+                if !self.state.memory.mem_search.trim().is_empty() {
+                    self.schedule_mem_search(self.state.memory.mem_search.clone());
+                } else {
+                    self.worker.refresh_memory(repo.as_deref());
+                }
+                let followups = self.state.reduce(Action::RefreshDiagnostics);
                 self.apply(followups);
             }
             Action::LookupSelectNode(id) => {
@@ -230,6 +459,13 @@ impl Effects<'_> {
                 && self.state.workspace.repo_initialized
             {
                 self.apply(vec![Action::RefreshLookup]);
+            }
+            // Memory auto-refreshes on repo switch while visible so
+            // per-tab diagnostics never sit on the previous tab's data
+            // (the switch already reset them to pending above).
+            if self.state.workspace.screen == Screen::Memory && self.state.workspace.repo.is_some()
+            {
+                self.apply(vec![Action::RefreshMemory, Action::RefreshDiagnostics]);
             }
         }
         for followup in followups {

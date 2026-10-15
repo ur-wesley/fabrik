@@ -20,11 +20,7 @@ pub fn kanban_column(ui: &mut Ui, props: &KanbanColumnProps) -> Vec<Action> {
     }
 }
 
-fn collapsed_lane(
-    ui: &mut Ui,
-    props: &KanbanColumnProps,
-    size: egui::Vec2,
-) -> Vec<Action> {
+fn collapsed_lane(ui: &mut Ui, props: &KanbanColumnProps, size: egui::Vec2) -> Vec<Action> {
     let mut actions = Vec::new();
     let count = props.lane.cards.len();
     let label = props.lane.label;
@@ -53,11 +49,7 @@ fn collapsed_lane(
     actions
 }
 
-fn expanded_lane(
-    ui: &mut Ui,
-    props: &KanbanColumnProps,
-    size: egui::Vec2,
-) -> Vec<Action> {
+fn expanded_lane(ui: &mut Ui, props: &KanbanColumnProps, size: egui::Vec2) -> Vec<Action> {
     let mut actions = Vec::new();
     let filter = props.lane.filter;
     let count = props.lane.cards.len();
@@ -95,13 +87,7 @@ fn rotated_label(ui: &mut Ui, text: &str) {
     }
 }
 
-fn lane_header(
-    ui: &mut Ui,
-    label: &str,
-    count: usize,
-    filter: Filter,
-    actions: &mut Vec<Action>,
-) {
+fn lane_header(ui: &mut Ui, label: &str, count: usize, filter: Filter, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(icons::with_icon(icons::lane_icon(filter), label)).strong());
         badge::badge(ui, &format!("{count}"));

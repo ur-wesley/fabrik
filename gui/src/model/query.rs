@@ -73,6 +73,65 @@ pub fn split_issue_id(id: &str) -> IssueIdParts {
     }
 }
 
+/// Port of the CLI `issueIDRe` (`^f-[0-9a-f]{8,32}$`): live issue IDs are
+/// `f-` plus 8-32 lowercase hex chars. Anything else is rejected by
+/// `fabrik issue show <id>` before it touches the store.
+pub fn is_issue_id(id: &str) -> bool {
+    let Some(hex) = id.strip_prefix("f-") else {
+        return false;
+    };
+    (8..=32).contains(&hex.len())
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// Port of the CLI `observationIDRe` (`^o-[0-9a-f]+$`). Legacy numeric
+/// memory IDs (e.g. `"358"`) fail this check and are rejected by
+/// `fabrik mem get <id>` as well.
+pub fn is_observation_id(id: &str) -> bool {
+    let Some(hex) = id.strip_prefix("o-") else {
+        return false;
+    };
+    !hex.is_empty()
+        && hex
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// Graph anchor classifier (mirrors the `is_issue_id` / `is_observation_id`
+/// validator pattern): `graph context` / `graph impact` resolve symbols
+/// only, so only `sym:` anchors may spawn a fetch. File anchors
+/// (`file:…`) show path info + hint in the header instead of firing —
+/// live-confirmed: `graph context 'file:…'` fails with
+/// `node sym:file:… not found`.
+#[must_use]
+pub fn is_symbol_anchor(id: &str) -> bool {
+    id.trim().starts_with("sym:")
+}
+
+/// File-node anchors (`file:…`) carry a path, not a symbol: context and
+/// impact buttons stay disabled while one is selected.
+#[must_use]
+pub fn is_file_anchor(id: &str) -> bool {
+    id.trim().starts_with("file:")
+}
+
+/// CLI-expected `--project` label for `mem search`/`mem context`: the label
+/// the CLI stores is the absolute repo root (`store.RepoRoot`), so a
+/// relative GUI path must be made absolute first. Absolute paths pass
+/// through untouched (no symlink resolution: `canonicalize` would prepend
+/// `\\?\` on Windows and break the label match).
+pub fn project_label(repo: &std::path::Path) -> String {
+    if repo.is_absolute() {
+        return repo.to_string_lossy().into_owned();
+    }
+    std::path::absolute(repo).map_or_else(
+        |_| repo.to_string_lossy().into_owned(),
+        |abs| abs.to_string_lossy().into_owned(),
+    )
+}
+
 pub fn matches_filter(issue: &Issue, filter: Filter, ready_ids: &HashSet<String>) -> bool {
     match filter {
         Filter::Ready => ready_ids.contains(&issue.id),

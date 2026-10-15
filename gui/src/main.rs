@@ -1,25 +1,26 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod app_memory;
 mod board;
-mod file_length;
 mod cache;
 mod discover;
 mod effects;
 #[allow(dead_code)]
 mod fabrik;
+mod file_length;
 mod lookup;
 mod memory;
 mod model;
 mod platform;
 mod state;
-mod toast;
 mod store;
-mod views;
-mod workspace;
 #[allow(dead_code)]
 mod subscribe;
+mod toast;
+mod views;
 mod watch;
+mod workspace;
 
 mod ui;
 
@@ -52,23 +53,35 @@ fn pick_renderer() -> eframe::Renderer {
     }
     match asked.as_deref() {
         Some("glow") => {
-            eprintln!("[glass] renderer=Glow (override)");
+            if crate::platform::glass_debug_enabled() {
+                eprintln!("[glass] renderer=Glow (override)");
+            }
             eframe::Renderer::Glow
         }
         Some("wgpu") => {
-            eprintln!("[glass] renderer=Wgpu (override)");
+            if crate::platform::glass_debug_enabled() {
+                eprintln!("[glass] renderer=Wgpu (override)");
+            }
             eframe::Renderer::Wgpu
         }
         Some(other) => {
-            eprintln!("[glass] unknown renderer '{other}', falling back to Glow");
+            if crate::platform::glass_debug_enabled() {
+                eprintln!("[glass] unknown renderer '{other}', falling back to Glow");
+            }
             eframe::Renderer::Glow
         }
         None => {
             if cfg!(target_os = "macos") {
-                eprintln!("[glass] renderer=Wgpu (macOS default; Glow+transparent often invisible)");
+                if crate::platform::glass_debug_enabled() {
+                    eprintln!(
+                        "[glass] renderer=Wgpu (macOS default; Glow+transparent often invisible)"
+                    );
+                }
                 eframe::Renderer::Wgpu
             } else {
-                eprintln!("[glass] renderer=Glow (default)");
+                if crate::platform::glass_debug_enabled() {
+                    eprintln!("[glass] renderer=Glow (default)");
+                }
                 eframe::Renderer::Glow
             }
         }

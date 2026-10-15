@@ -1,7 +1,9 @@
 use serde::Deserialize;
 
 use super::issue::{Comment, DepNode, Issue, IssueDetail};
-use super::query::{DEFAULT_PRIORITY, default_kind, nonempty, nonempty_opt, parse_time, priority_u8};
+use super::query::{
+    DEFAULT_PRIORITY, default_kind, nonempty, nonempty_opt, parse_time, priority_u8,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct IssueJson {
@@ -22,6 +24,20 @@ pub struct IssueJson {
     pub assignee: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    // Live `issue list --json` also sends these; the board only needs the
+    // fields above, but parsing must tolerate the full shape.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub ready: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub closed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -82,12 +98,18 @@ pub struct ShowIssueJson {
     pub blocking: Vec<IssueRefJson>,
     #[serde(default)]
     pub notes: Vec<NoteJson>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub ready: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NoteJson {
     #[allow(dead_code)]
     pub id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub issue_id: Option<String>,
     #[serde(default)]
     pub body: String,
     #[serde(default)]
@@ -106,8 +128,16 @@ impl NoteJson {
 
 impl ShowIssueJson {
     pub fn into_detail(self) -> IssueDetail {
-        let dependencies: Vec<DepNode> = self.blockers.into_iter().map(IssueRefJson::into_dep).collect();
-        let dependents: Vec<DepNode> = self.blocking.into_iter().map(IssueRefJson::into_dep).collect();
+        let dependencies: Vec<DepNode> = self
+            .blockers
+            .into_iter()
+            .map(IssueRefJson::into_dep)
+            .collect();
+        let dependents: Vec<DepNode> = self
+            .blocking
+            .into_iter()
+            .map(IssueRefJson::into_dep)
+            .collect();
         let comments: Vec<Comment> = self.notes.into_iter().map(NoteJson::into_comment).collect();
         let dependency_count = dependencies.len();
         let dependent_count = dependents.len();

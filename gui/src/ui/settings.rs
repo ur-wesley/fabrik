@@ -64,9 +64,11 @@ pub fn settings_pane(ui: &mut Ui, view: &SettingsView) -> Vec<Action> {
                             .color(theme::text_primary()),
                     );
                     ui.label(
-                        egui::RichText::new("Apps configured when you initialize a folder from Neon.")
-                            .font(theme::font_footnote())
-                            .color(theme::text_secondary()),
+                        egui::RichText::new(
+                            "Apps configured when you initialize a folder from Neon.",
+                        )
+                        .font(theme::font_footnote())
+                        .color(theme::text_secondary()),
                     );
                     ui.add_space(6.0);
                     actions.extend(init_app_toggles(ui, view));

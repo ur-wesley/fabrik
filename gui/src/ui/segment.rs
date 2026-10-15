@@ -18,8 +18,18 @@ pub fn segment(ui: &mut Ui, props: &SegmentProps) -> Option<ViewMode> {
         ViewMode::List => 0,
         ViewMode::Kanban => 1,
     };
-    let picked = segmented_control(ui, ui.id().with("list_kanban"), &labels, &LIST_KANBAN_W, selected)?;
-    Some(if picked == 0 { ViewMode::List } else { ViewMode::Kanban })
+    let picked = segmented_control(
+        ui,
+        ui.id().with("list_kanban"),
+        &labels,
+        &LIST_KANBAN_W,
+        selected,
+    )?;
+    Some(if picked == 0 {
+        ViewMode::List
+    } else {
+        ViewMode::Kanban
+    })
 }
 
 pub fn segmented_control(
@@ -34,15 +44,13 @@ pub fn segmented_control(
         return None;
     }
     let total_w = widths[..count].iter().sum::<f32>();
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(total_w, theme::SEGMENT_H), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(total_w, theme::SEGMENT_H), Sense::hover());
     ui.painter()
         .rect_filled(rect, theme::radius_segment(), theme::segmented_track());
 
     let mut picked = None;
     for index in 0..count {
-        let seg_min =
-            egui::pos2(rect.min.x + widths[..index].iter().sum::<f32>(), rect.min.y);
+        let seg_min = egui::pos2(rect.min.x + widths[..index].iter().sum::<f32>(), rect.min.y);
         let seg_rect =
             egui::Rect::from_min_size(seg_min, egui::vec2(widths[index], theme::SEGMENT_H));
         let is_selected = index == selected;

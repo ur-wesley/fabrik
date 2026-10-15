@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, Ui};
 
-use crate::model::split_issue_id;
+use crate::model::{is_issue_id, split_issue_id};
 
 use super::theme;
 
@@ -62,6 +62,17 @@ pub fn priority_badge(ui: &mut Ui, priority: u8) {
 }
 
 pub fn issue_id(ui: &mut Ui, id: &str) {
+    if !is_issue_id(id) {
+        // Foreign or legacy ids (no `f-` hex shape): single label, no
+        // fake prefix/number split.
+        ui.label(
+            egui::RichText::new(id)
+                .small()
+                .strong()
+                .color(theme::neon_cyan()),
+        );
+        return;
+    }
     let parts = split_issue_id(id);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;

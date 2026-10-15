@@ -35,11 +35,7 @@ impl AppState {
         op: Option<String>,
     ) -> Vec<Action> {
         let now = Instant::now();
-        if let Some(msg) = crate::toast::live_event_message(
-            &topic,
-            id.as_deref(),
-            op.as_deref(),
-        ) {
+        if let Some(msg) = crate::toast::live_event_message(&topic, id.as_deref(), op.as_deref()) {
             self.toasts.push_info(msg, now);
         }
         self.touch();
