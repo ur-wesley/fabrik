@@ -25,11 +25,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe, shell: 'msys2 {0}' }
-          - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik, shell: 'bash' }
-          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik, shell: 'bash' }
-          - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik, shell: 'bash' }
-          - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik, shell: 'bash' }
+          - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
+          - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
+          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
+          - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
+          - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -75,16 +75,46 @@ jobs:
           update: true
           install: mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu
 
-      - name: test
-        shell: ${{ matrix.shell }}
+      - name: test (windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         env:
           CGO_ENABLED: "1"
           CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: go test ./...
 
-      - name: build
-        shell: ${{ matrix.shell }}
+      - name: test (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
+        run: go test ./...
+
+      - name: build (windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
+        run: |
+          go build -trimpath \
+            -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
+            -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
+          sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
+          mkdir -p "../npm/${{ matrix.npmDir }}/bin"
+          cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
+          chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
+          ls -l "../npm/${{ matrix.npmDir }}/bin"
+
+      - name: build (unix)
+        if: runner.os != 'Windows'
+        shell: bash
         env:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
