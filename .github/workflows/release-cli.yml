@@ -61,7 +61,10 @@ jobs:
 
       - name: install build deps (linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
+        shell: bash
+        run: |
+          sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo apt-get install -y gcc-aarch64-linux-gnu; fi
 
       - name: install build deps (macos)
         if: runner.os == 'macOS'
@@ -75,6 +78,11 @@ jobs:
           update: true
           install: mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu
           path-type: inherit
+
+      - name: set CC for linux-arm64
+        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+        shell: bash
+        run: echo "CC=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
       - name: test (windows)
         if: runner.os == 'Windows'
