@@ -1,0 +1,11 @@
+{
+  "name": "fabrik",
+  "displayName": "Fabrik",
+  "version": "0.2.0",
+  "description": "Cross-platform AI workflow for Cursor, OpenCode, Pi, Antigravity and Gemini CLI: grill, Beads issues, TDD backpressure, Engram persistent memory, Graphify code mapping, and local-project skills.",
+  "suggestedPrompts": [
+    "Run fabrik check to inspect installed tools and dependencies",
+    "Start the Fabrik session loop: check Engram context and bd ready work",
+    "Create a new spec in .fabrik/specs/ and prepare for review"
+  ]
+}
