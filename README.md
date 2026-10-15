@@ -81,7 +81,7 @@ Beads owns tasks. Engram owns memory. Do not use `bd remember` for the same fact
 | `cli/` | Go CLI (`fabrik setup|init|check|update-deps|version|show|list|run|loop|migrate`), versioned via `cli/package.json` (synced from root) |
 | `bin/fabrik.js` | npm/bun `fabrik` launcher (no postinstall, resolves platform package) |
 | `npm/fabrik-*/` | Per-platform packages with prebuilt binary (`optionalDependencies`) |
-| `scripts/sync-versions.mjs` | Keeps root + `cli/package.json` + `npm/*/package.json` in sync |
+| `scripts/sync-versions.mjs` | Keeps root + `cli/package.json` + `gui/Cargo.toml` + `npm/*/package.json` in sync |
 | `install/deps.json` | Pinned versions (embedded copy in CLI + sync test) |
 | `install/templates/` | Template sources embedded in the CLI (`fabrik show`, `fabrik init`) |
 
@@ -93,3 +93,11 @@ See [PLAYBOOK.md](PLAYBOOK.md) for the full method.
 cd cli && go test ./...
 cd cli && go build ./cmd/fabrik
 ```
+
+Issue commands (`fabrik issue …`) talk to the embedded Dolt store
+(`.fabrik/dolt`) and need a `CGO_ENABLED=1` build plus a C toolchain:
+`npm run cli:build-cgo` (or `mise run cli:build-cgo`) fails fast with a
+`gcc missing` error when no compiler is on PATH (Windows: `winget install
+-e --id BrechtSanders.WinLibs.POSIX.UCRT`; releases build Windows via
+msys2 `mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu`). Graph commands
+(`fabrik graph …`) are pure Go (`modernc.org/sqlite`) and work without gcc.

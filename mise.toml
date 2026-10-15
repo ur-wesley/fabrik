@@ -1,2 +1,58 @@
 [tools]
 go = "1.27"
+"cargo:cargo-watch" = "8.5.3"
+
+[tasks.test]
+description = "Run Go CLI test suite (mirrors cli:test + cli.yml)"
+run = "cd cli && go test ./..."
+
+[tasks.vet]
+description = "Run go vet on the CLI (mirrors cli.yml)"
+run = "cd cli && go vet ./..."
+
+[tasks.build]
+description = "Build the Go CLI (mirrors cli:build + cli.yml)"
+run = "cd cli && go build ./..."
+
+[tasks."versions:check"]
+description = "Verify package.json versions are in sync (mirrors release-cli.yml)"
+run = "node scripts/sync-versions.mjs --check"
+
+[tasks."versions:sync"]
+description = "Sync versions across package.json files"
+run = "node scripts/sync-versions.mjs"
+
+[tasks.e2e]
+description = "Real-repo smoke: run the built CLI (--help + version) against this repo"
+depends = "build"
+run = "cd cli && go run ./cmd/fabrik --help && go run ./cmd/fabrik version"
+
+[tasks."gui:check"]
+description = "Typecheck the Rust GUI"
+run = "cd gui && cargo check --all-targets"
+
+[tasks."gui:test"]
+description = "Run Rust GUI tests"
+run = "cd gui && cargo test"
+
+[tasks."cli:build-cgo"]
+description = "CGO build of the Go CLI into cli/fabrik (.exe on Windows); fails with a clear `gcc missing` error when no compiler is on PATH (issue store needs CGO_ENABLED=1; graph cmds are pure Go)"
+run = "node scripts/build-cgo.mjs"
+
+[tasks."gui:run"]
+description = "Run the Rust GUI against a fresh CGO CLI build (see cli:build-cgo)"
+depends = "cli:build-cgo"
+run = "cd gui && FABRIK_BIN=\"{{config_root}}/cli/fabrik\" cargo run"
+run_windows = "cd gui && set \"FABRIK_BIN={{config_root}}/cli/fabrik.exe\" && cargo run"
+# Fresh CLI for `graph overview`: the GUI shells FABRIK_BIN (else `fabrik`
+# from PATH, which may predate `graph overview`). Same output convention as
+# `npm run cli:build`, plus the platform extension: on Windows the build
+# lands in `cli/fabrik.exe` and FABRIK_BIN points at exactly that file.
+# An extensionless FABRIK_BIN must not be used on Windows — CreateProcess
+# appends `.exe` to extensionless spawn paths, so a stale `cli/fabrik.exe`
+# sitting next to a fresh `cli/fabrik` would silently hijack execution
+# (cli-umi). Both names are gitignored build artifacts.
+
+[tasks."release:check"]
+description = "Pre-release gate: versions:check + vet + build (mirrors release-cli.yml matrix)"
+depends = ["versions:check", "vet", "build", "gui:check"]

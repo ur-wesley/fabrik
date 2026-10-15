@@ -2,6 +2,7 @@ apps:
   - cursor
   - pi
   - antigravity
+  - gemini
   - opencode
 
 agent: pi
@@ -15,9 +16,7 @@ session:
 
 tools:
   rtk: true
-  engram: true
-  graphify: true
-  beads: true
+  fabrik_mcp: true
   ponytail: true
   jev: auto # optional decision gates (noul/choice/score/evaluate); auto = use only when MCP server `jev` + TYPESAFE_API_KEY configured, true = require, false = never
 

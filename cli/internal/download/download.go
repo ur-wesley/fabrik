@@ -11,8 +11,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 )
 
 // Client is injectable for tests (http.DefaultClient outside tests).
@@ -69,10 +72,11 @@ func ExtractBinary(archive, binary string) (string, error) {
 		return "", err
 	}
 	var xerr error
+	lower := strings.ToLower(archive)
 	switch {
-	case strings.HasSuffix(archive, ".zip"):
+	case strings.HasSuffix(lower, ".zip"):
 		xerr = unzip(archive, dir)
-	case strings.HasSuffix(archive, ".tar.gz"):
+	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
 		xerr = untar(archive, dir)
 	default:
 		xerr = fmt.Errorf("unknown archive type: %s", archive)
@@ -83,7 +87,7 @@ func ExtractBinary(archive, binary string) (string, error) {
 	}
 	var found string
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && d.Name() == binary {
+		if err == nil && !d.IsDir() && strings.EqualFold(d.Name(), binary) {
 			found = p
 		}
 		return nil
@@ -91,6 +95,14 @@ func ExtractBinary(archive, binary string) (string, error) {
 	if found == "" {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("could not find %s inside archive", binary)
+	}
+	// Archives (notably zips) often carry no exec bit; ensure the extracted
+	// binary is executable on Unix. No-op on Windows (no exec bit there).
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(found, fileutil.ExePerm); err != nil {
+			os.RemoveAll(dir)
+			return "", err
+		}
 	}
 	return found, nil
 }
@@ -110,11 +122,17 @@ func unzip(src, dir string) error {
 }
 
 func writeZipEntry(f *zip.File, dir string) error {
-	dst := filepath.Join(dir, filepath.FromSlash(f.Name))
-	if f.FileInfo().IsDir() {
-		return os.MkdirAll(dst, 0o755)
+	if f.FileInfo().Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("archive entry is a symlink: %q", f.Name)
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	dst, err := resolveWithin(dir, f.Name)
+	if err != nil {
+		return err
+	}
+	if f.FileInfo().IsDir() {
+		return os.MkdirAll(dst, fileutil.DirPerm)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), fileutil.DirPerm); err != nil {
 		return err
 	}
 	rc, err := f.Open()
@@ -122,7 +140,9 @@ func writeZipEntry(f *zip.File, dir string) error {
 		return err
 	}
 	defer rc.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	// Clamp archive-carried modes: strip setuid/setgid/sticky and
+	// group/other write (a hostile archive must not mint setuid files).
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode().Perm()&fileutil.ArchiveFileMask)
 	if err != nil {
 		return err
 	}
@@ -151,17 +171,27 @@ func untar(src, dir string) error {
 		if err != nil {
 			return err
 		}
-		dst := filepath.Join(dir, filepath.FromSlash(hdr.Name))
+		switch hdr.Typeflag {
+		case tar.TypeReg, tar.TypeRegA, tar.TypeDir:
+			// allowed: regular file or directory
+		default:
+			return fmt.Errorf("archive entry has disallowed type %q: %q", rune(hdr.Typeflag), hdr.Name)
+		}
+		dst, err := resolveWithin(dir, hdr.Name)
+		if err != nil {
+			return err
+		}
 		if hdr.FileInfo().IsDir() {
-			if err := os.MkdirAll(dst, 0o755); err != nil {
+			if err := os.MkdirAll(dst, fileutil.DirPerm); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dst), fileutil.DirPerm); err != nil {
 			return err
 		}
-		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode())
+		// Clamp archive-carried modes (see writeZipEntry).
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, hdr.FileInfo().Mode().Perm()&fileutil.ArchiveFileMask)
 		if err != nil {
 			return err
 		}
@@ -171,4 +201,29 @@ func untar(src, dir string) error {
 		}
 		out.Close()
 	}
+}
+
+// resolveWithin joins an archive entry name to dir and ensures the result
+// stays inside dir (Zip-Slip containment). It rejects absolute paths and
+// any entry that cleans to something outside dir (e.g. "../evil.txt").
+func resolveWithin(dir, name string) (string, error) {
+	// Reject Unix-absolute names outright: on Windows "/abs.txt" is not
+	// reported by filepath.IsAbs but still escapes on Unix targets.
+	if strings.HasPrefix(filepath.ToSlash(name), "/") {
+		return "", fmt.Errorf("archive entry escapes target dir: %q", name)
+	}
+	cleaned := filepath.Clean(filepath.FromSlash(name))
+	if cleaned == "." {
+		return "", fmt.Errorf("archive entry has empty name")
+	}
+	if filepath.IsAbs(cleaned) || filepath.VolumeName(cleaned) != "" ||
+		strings.HasPrefix(cleaned, string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes target dir: %q", name)
+	}
+	dst := filepath.Join(dir, cleaned)
+	base := filepath.Clean(dir)
+	if dst != base && !strings.HasPrefix(dst, base+string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes target dir: %q", name)
+	}
+	return dst, nil
 }

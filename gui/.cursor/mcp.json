@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "fabrik": {
+      "args": [
+        "mcp"
+      ],
+      "command": "fabrik"
+    }
+  }
+}

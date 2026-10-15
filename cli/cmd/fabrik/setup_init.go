@@ -33,11 +33,11 @@ func newSetupCmd() *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.BoolVar(&cfg.SkipToolInstall, "skip-tool-install", false, "fail if a tool is missing instead of installing it")
-	f.BoolVar(&cfg.SkipEngramSetup, "skip-engram-setup", false, "skip engram setup for Cursor/OpenCode/Pi")
-	f.BoolVar(&cfg.SkipPiPackages, "skip-pi-packages", false, "skip Pi package install")
+	f.BoolVar(&cfg.SkipToolInstall, "skip-tool-install", false, "deprecated: no-op")
+	f.BoolVar(&cfg.SkipEngramSetup, "skip-engram-setup", false, "deprecated: no-op")
+	f.BoolVar(&cfg.SkipPiPackages, "skip-pi-packages", false, "deprecated: no-op")
 	f.StringVar(&cfg.RepoPath, "repo", "", "repo to initialize (default: current directory)")
-	f.StringSliceVar(&cfg.Apps, "apps", nil, "apps to configure (cursor, pi, antigravity, opencode)")
+	f.StringSliceVar(&cfg.Apps, "apps", nil, "apps to configure (cursor, pi, antigravity, gemini, opencode)")
 	f.BoolVar(&cfg.Yes, "yes", false, "answer yes to all prompts (interactive by default)")
 	f.BoolVar(&nonInteractive, "non-interactive", false, "alias for --yes (CI)")
 	f.BoolVar(&cfg.DryRun, "dry-run", false, "print actions without changing anything")
@@ -69,10 +69,11 @@ func newInitCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.BoolVar(&cfg.SkipChecks, "skip-checks", false, "skip advisory tool check")
-	f.StringSliceVar(&cfg.Apps, "apps", nil, "apps to configure (cursor, pi, antigravity, opencode)")
+	f.StringSliceVar(&cfg.Apps, "apps", nil, "apps to configure (cursor, pi, antigravity, gemini, opencode)")
 	f.BoolVar(&cfg.Yes, "yes", false, "answer yes to all prompts (interactive by default)")
 	f.BoolVar(&nonInteractive, "non-interactive", false, "alias for --yes (CI)")
 	f.BoolVar(&cfg.DryRun, "dry-run", false, "print actions without changing anything")
 	f.BoolVar(&cfg.Full, "full", false, "restore legacy full-hub dump (one-release rollback; default is thin)")
+	f.BoolVar(&cfg.JSON, "json", false, "machine-readable result")
 	return cmd
 }

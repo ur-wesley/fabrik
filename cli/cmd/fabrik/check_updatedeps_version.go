@@ -3,20 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/ur-wesley/fabrik/cli/internal/check"
-	"github.com/ur-wesley/fabrik/cli/internal/deps"
-	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/store"
 	"github.com/ur-wesley/fabrik/cli/internal/updatedeps"
 	"github.com/ur-wesley/fabrik/cli/internal/version"
 )
 
 func runCheckQuiet(ctx context.Context) error {
-	r := check.Run(ctx, exec.OSRunner{})
-	if !r.OK {
-		return fmt.Errorf("missing tools")
+	_, code := check.Run(ctx, "")
+	if code != 0 {
+		return fmt.Errorf("repo store not ready")
 	}
 	return nil
 }
@@ -25,15 +23,28 @@ func newCheckCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "check",
-		Short: "Probe PATH for bd, engram, graphify, bun, pi, uv",
+		Short: "Report repo Dolt/graph store health",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r := check.Run(cmd.Context(), exec.OSRunner{})
+			repoRoot := repoDirFlag
+			if repoRoot == "" {
+				if root, ok := store.RepoRoot(repoStartDir()); ok {
+					repoRoot = root
+				}
+			}
+			r, code := check.Run(cmd.Context(), repoRoot)
 			if asJSON {
-				return check.PrintJSONTo(cmd.OutOrStdout(), r)
+				if err := check.PrintJSONTo(cmd.OutOrStdout(), r); err != nil {
+					return err
+				}
+				if code != 0 {
+					return &check.ExitError{Code: code}
+				}
+				return nil
 			}
 			check.Print(cmd.OutOrStdout(), r)
-			if !r.OK {
-				os.Exit(1)
+			check.PrintPluginAdvisory(cmd.OutOrStdout())
+			if code != 0 {
+				return &check.ExitError{Code: code}
 			}
 			return nil
 		},
@@ -65,15 +76,9 @@ func newUpdateDepsCmd() *cobra.Command {
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print CLI version + pinned tool versions",
+		Short: "Print CLI version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pins, err := deps.Load()
-			if err != nil {
-				return err
-			}
-			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "fabrik %s\n", version.Get())
-			fmt.Fprintf(out, "beads %s, engram %s, graphify %s\n", pins.Beads.Tag, pins.Engram.Tag, pins.Graphify.Version)
+			fmt.Fprintf(cmd.OutOrStdout(), "fabrik %s\n", version.Get())
 			return nil
 		},
 	}

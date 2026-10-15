@@ -51,18 +51,18 @@ func SelectApps(defaults []string, yes bool) ([]string, error) {
 		if len(defaults) > 0 {
 			return defaults, nil
 		}
-		return []string{"cursor", "pi", "antigravity", "opencode"}, nil
+		return []string{"cursor", "pi", "antigravity", "gemini", "opencode"}, nil
 	}
 	if f, err := os.Stdin.Stat(); err == nil && (f.Mode()&os.ModeCharDevice) == 0 {
 		if len(defaults) > 0 {
 			return defaults, nil
 		}
-		return []string{"cursor", "pi", "antigravity", "opencode"}, nil
+		return []string{"cursor", "pi", "antigravity", "gemini", "opencode"}, nil
 	}
 
 	selected := defaults
 	if len(selected) == 0 {
-		selected = []string{"cursor", "pi", "antigravity", "opencode"}
+		selected = []string{"cursor", "pi", "antigravity", "gemini", "opencode"}
 	}
 
 	form := huh.NewForm(
@@ -73,6 +73,7 @@ func SelectApps(defaults []string, yes bool) ([]string, error) {
 					huh.NewOption("Cursor", "cursor"),
 					huh.NewOption("Pi", "pi"),
 					huh.NewOption("Antigravity", "antigravity"),
+					huh.NewOption("Gemini", "gemini"),
 					huh.NewOption("OpenCode", "opencode"),
 				).
 				Value(&selected),

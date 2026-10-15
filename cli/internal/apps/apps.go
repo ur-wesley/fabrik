@@ -4,17 +4,20 @@ package apps
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ur-wesley/fabrik/cli/internal/clierr"
 )
 
 const (
 	Cursor      = "cursor"
 	Pi          = "pi"
 	Antigravity = "antigravity"
+	Gemini      = "gemini"
 	OpenCode    = "opencode"
 )
 
 // All lists all supported applications in canonical display order.
-var All = []string{Cursor, Pi, Antigravity, OpenCode}
+var All = []string{Cursor, Pi, Antigravity, Gemini, OpenCode}
 
 // DisplayName returns a human-friendly display name for an app.
 func DisplayName(app string) string {
@@ -25,6 +28,8 @@ func DisplayName(app string) string {
 		return "Pi"
 	case Antigravity:
 		return "Antigravity"
+	case Gemini:
+		return "Gemini"
 	case OpenCode:
 		return "OpenCode"
 	default:
@@ -35,7 +40,7 @@ func DisplayName(app string) string {
 // IsValid reports whether app is one of the supported applications.
 func IsValid(app string) bool {
 	switch strings.ToLower(strings.TrimSpace(app)) {
-	case Cursor, Pi, Antigravity, OpenCode:
+	case Cursor, Pi, Antigravity, Gemini, OpenCode:
 		return true
 	default:
 		return false
@@ -61,7 +66,7 @@ func Normalize(raw []string) ([]string, error) {
 				return append([]string(nil), All...), nil
 			}
 			if !IsValid(p) {
-				return nil, fmt.Errorf("invalid app %q: supported apps are %s", p, strings.Join(All, ", "))
+				return nil, clierr.Usage(fmt.Sprintf("fabrik: unknown app: %s", p))
 			}
 			if !seen[p] {
 				seen[p] = true

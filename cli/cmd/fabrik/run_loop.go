@@ -16,7 +16,7 @@ func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the Fabrik workflow: align, plan, build (port of fabrik.sh)",
-		Long: `Setup gate (.beads + .fabrik/config.yaml), then --auto generates the PRD
+		Long: `Setup gate (.fabrik/dolt + config.yaml), then --auto generates the PRD
 via 'opencode run' or launches the TUI, then plans and pauses for APPROVE
 before the build wave (shared CTA agents/cta.md).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -36,7 +36,7 @@ func newLoopCmd() *cobra.Command {
 	var repo string
 	cmd := &cobra.Command{
 		Use:   "loop <plan|build>",
-		Short: "Poll bd ready/list and drive opencode runs (port of loop.sh)",
+		Short: "Poll ready issues and drive opencode runs (port of loop.sh)",
 		Long: `Plan runs once then exits; build loops until no open/ready issues
 remain or --max iterations hit. Stdout only, no state files. Push is opt-in
 via --push (default: no push without explicit approval).`,

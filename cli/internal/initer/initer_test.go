@@ -17,7 +17,19 @@ import (
 func testEnv(t *testing.T, repo string, f *exec.Fake) (Deps, *bytes.Buffer) {
 	t.Helper()
 	var out bytes.Buffer
-	return Deps{Exec: f, Out: &out, Check: func(ctx context.Context) error { return nil }}, &out
+	return Deps{
+		Exec:  f,
+		Out:   &out,
+		Check: func(ctx context.Context) error { return nil },
+		InitStores: func(ctx context.Context, abs string, r exec.Runner) (StoreResult, error) {
+			return StoreResult{
+				DoltPath:  filepath.Join(abs, ".fabrik", "dolt"),
+				GraphPath: filepath.Join(abs, ".fabrik", "graph.db"),
+				Created:   true,
+			}, nil
+		},
+		RegisterMCP: func([]string, string) error { return nil },
+	}, &out
 }
 
 // expectedThinSkills derives from the embedded templates (single source:
@@ -26,9 +38,7 @@ func expectedThinSkills() []string { return thinSkillNames() }
 
 func TestInitThinDefault(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, out := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true}, d))
 
@@ -72,6 +82,7 @@ func TestInitThinDefault(t *testing.T) {
 			filepath.Join(".opencode", "skills", s+".md"),
 			filepath.Join(".pi", "skills", s+".md"),
 			filepath.Join(".agents", "skills", s, "SKILL.md"),
+			filepath.Join(".gemini", "skills", s, "SKILL.md"),
 		} {
 			full := filepath.Join(repo, p)
 			assert.FileExists(t, full, p)
@@ -98,6 +109,12 @@ func TestInitThinDefault(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(cursorBody), "name: "+a)
 		assert.Contains(t, string(cursorBody), "Run: fabrik show agent "+a)
+
+		geminiPath := filepath.Join(repo, ".gemini", "agents", a+".md")
+		assert.FileExists(t, geminiPath, a)
+		geminiBody, err := os.ReadFile(geminiPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(geminiBody), "Run: fabrik show agent "+a)
 	}
 	assert.NoFileExists(t, filepath.Join(repo, ".cursor", "agents", "cta.md"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor", "rules", "agents"))
@@ -110,24 +127,17 @@ func TestInitThinDefault(t *testing.T) {
 	assert.Contains(t, string(body), "fabrik show workflow")
 	assert.LessOrEqual(t, len(strings.Split(strings.TrimSpace(string(body)), "\n")), 8, "pointer AGENTS.md must stay short")
 
-	// wiring still invoked inside the repo, no stray dirs
-	assert.True(t, f.Called("bd setup cursor"))
-	assert.True(t, f.Called("bd setup opencode"))
-	require.NotEmpty(t, f.Dirs)
-	for _, dir := range f.Dirs {
-		assert.Equal(t, repo, dir)
-	}
 	assert.DirExists(t, filepath.Join(repo, ".agents"))
+	assert.DirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoDirExists(t, filepath.Join(repo, ".claude"))
 	assert.NoDirExists(t, filepath.Join(repo, ".codex"))
-	assert.Contains(t, out.String(), "Done.")
+	assert.Contains(t, out.String(), "dolt ")
+	assert.Contains(t, out.String(), "graph ")
 }
 
 func TestInitFullLegacy(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, out := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Full: true}, d))
 
@@ -161,6 +171,7 @@ func TestInitFullLegacy(t *testing.T) {
 		assert.FileExists(t, filepath.Join(repo, ".opencode", "skills", s+".md"))
 		assert.FileExists(t, filepath.Join(repo, ".pi", "skills", s+".md"))
 		assert.FileExists(t, filepath.Join(repo, ".agents", "skills", s, "SKILL.md"))
+		assert.FileExists(t, filepath.Join(repo, ".gemini", "skills", s, "SKILL.md"))
 	}
 	// opencode.json replaces built-in build with Fabrik roster
 	assert.FileExists(t, filepath.Join(repo, "opencode.json"))
@@ -176,20 +187,13 @@ func TestInitFullLegacy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(cursorBuilder), "name: builder")
 	assert.Contains(t, string(cursorBuilder), "# Builder subagent")
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "agents", "builder.md"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor", "rules", "agents"))
 	// every pinned subagent lands in the hub
 	pins, err := deps.Load()
 	require.NoError(t, err)
 	for _, a := range pins.Subagents {
 		assert.FileExists(t, filepath.Join(repo, ".fabrik", "agents", a+".md"), a)
-	}
-	// agent wiring invoked
-	assert.True(t, f.Called("bd setup cursor"))
-	assert.True(t, f.Called("bd setup opencode"))
-	// all repo-scoped commands must run inside the repo, not the CLI cwd
-	require.NotEmpty(t, f.Dirs)
-	for _, dir := range f.Dirs {
-		assert.Equal(t, repo, dir)
 	}
 	// no stray dirs
 	assert.DirExists(t, filepath.Join(repo, ".agents"))
@@ -199,14 +203,13 @@ func TestInitFullLegacy(t *testing.T) {
 	legacyBody, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(legacyBody), "Fabrik workflow")
-	assert.Contains(t, out.String(), "Done.")
+	assert.Contains(t, out.String(), "dolt ")
+	assert.Contains(t, out.String(), "graph ")
 }
 
 func TestInitSelectiveAppsCursorOnly(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"cursor"}}, d))
 
@@ -214,18 +217,14 @@ func TestInitSelectiveAppsCursorOnly(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
 	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
 	assert.NoDirExists(t, filepath.Join(repo, ".agents"))
+	assert.NoDirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
 
-	assert.True(t, f.Called("bd setup cursor"))
-	assert.False(t, f.Called("bd setup opencode"))
 }
 
 func TestInitSelectiveAppsAntigravityOnly(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true, "engram": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-		"engram setup antigravity-cli":                            "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"antigravity"}}, d))
 
@@ -234,17 +233,33 @@ func TestInitSelectiveAppsAntigravityOnly(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
 	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
 	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
+	assert.NoDirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
 
-	assert.False(t, f.Called("bd setup cursor"))
-	assert.True(t, f.Called("engram setup antigravity-cli"))
+}
+
+func TestInitSelectiveAppsGeminiOnly(t *testing.T) {
+	repo := t.TempDir()
+	f := &exec.Fake{}
+	d, _ := testEnv(t, repo, f)
+	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"gemini"}}, d))
+
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "skills", "tdd", "SKILL.md"))
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "agents", "plan.md"))
+	geminiSkill, err := os.ReadFile(filepath.Join(repo, ".gemini", "skills", "tdd", "SKILL.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(geminiSkill), "Run: fabrik show skill tdd")
+	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
+	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
+	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
+	assert.NoDirExists(t, filepath.Join(repo, ".agents"))
+	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
+
 }
 
 func TestInitInteractiveSelectApps(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	d.SelectApps = func(defaults []string, yes bool) ([]string, error) {
 		return []string{"pi", "antigravity"}, nil
@@ -259,20 +274,16 @@ func TestInitInteractiveSelectApps(t *testing.T) {
 
 func TestInitInvalidAppFails(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	err := Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"unsupported_app"}}, d)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid app")
+	assert.Contains(t, err.Error(), "unknown app")
 }
 
 func TestInitIdempotent(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true}, d))
 	agents, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
@@ -284,34 +295,22 @@ func TestInitIdempotent(t *testing.T) {
 	assert.Equal(t, string(agents), string(again), "second init must not duplicate workflow block")
 }
 
-func TestInitRequiresBd(t *testing.T) {
-	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{}}
-	d, _ := testEnv(t, repo, f)
-	err := Init(context.Background(), Config{RepoPath: repo, Yes: true, SkipChecks: true}, d)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bd not found")
-}
-
 func TestInitDryRunTouchesNothing(t *testing.T) {
 	repo := t.TempDir()
-	f := &exec.Fake{Path: map[string]bool{"bd": true}}
+	f := &exec.Fake{}
 	d, out := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, DryRun: true}, d))
 	assert.Contains(t, out.String(), "dry-run")
 	entries, err := os.ReadDir(repo)
 	require.NoError(t, err)
 	assert.Empty(t, entries)
-	assert.False(t, f.Called("bd init"))
 }
 
 func TestInitPreservesExistingSideEffectDirs(t *testing.T) {
 	repo := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".agents"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, ".agents", "keep.md"), []byte("x"), 0o644))
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true}, d))
 	assert.FileExists(t, filepath.Join(repo, ".agents", "keep.md"))
@@ -321,9 +320,7 @@ func TestInitAppendsPointerToExistingAgents(t *testing.T) {
 	repo := t.TempDir()
 	agentsPath := filepath.Join(repo, "AGENTS.md")
 	require.NoError(t, os.WriteFile(agentsPath, []byte("# my existing notes\n"), 0o644))
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true}, d))
 	body, err := os.ReadFile(agentsPath)
@@ -345,9 +342,7 @@ func TestInitPreservesExistingOpencodeJsonAndShims(t *testing.T) {
 	customShim := filepath.Join(repo, ".opencode", "skills", "tdd.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(customShim), 0o755))
 	require.NoError(t, os.WriteFile(customShim, []byte("my custom shim\n"), 0o644))
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: map[string]string{
-		"bd init --non-interactive --skip-agents --skip-hooks -q": "",
-	}}
+	f := &exec.Fake{}
 	d, _ := testEnv(t, repo, f)
 	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true}, d))
 	gotJSON, err := os.ReadFile(filepath.Join(repo, "opencode.json"))

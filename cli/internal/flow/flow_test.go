@@ -13,26 +13,58 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/store"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 )
 
 func noopSleep(time.Duration) {}
 
+type fakeLoopStore struct {
+	unfinished int
+	done       int
+	ready      []LoopIssue
+	claimBy    map[string]LoopIssue
+	claims     []string
+}
+
+func (f *fakeLoopStore) Snapshot(ctx context.Context) (int, int, []LoopIssue, error) {
+	return f.unfinished, f.done, f.ready, nil
+}
+
+func (f *fakeLoopStore) ClaimNext(ctx context.Context, by string) (LoopIssue, error) {
+	if len(f.ready) == 0 {
+		return LoopIssue{}, nil
+	}
+	id := f.ready[0].ID
+	f.claims = append(f.claims, id)
+	if f.claimBy != nil {
+		if iss, ok := f.claimBy[id]; ok {
+			return iss, nil
+		}
+	}
+	return f.ready[0], nil
+}
+
+func (f *fakeLoopStore) Close() error { return nil }
+
+func withFakeStore(t *testing.T, fake LoopStore) {
+	t.Helper()
+	old := OpenLoopStore
+	OpenLoopStore = func(ctx context.Context, repo string) (LoopStore, error) {
+		if _, ok := store.RepoRoot(repo); !ok {
+			return nil, store.ErrNoStore
+		}
+		return fake, nil
+	}
+	t.Cleanup(func() { OpenLoopStore = old })
+}
+
 func mkRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".beads"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".fabrik"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".fabrik", "dolt"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, ".fabrik", "config.yaml"), []byte("x: 1\n"), 0o644))
 	return repo
-}
-
-func emptyBdOutputs() map[string]string {
-	return map[string]string{
-		"bd list --status=open --json":               `[]`,
-		"bd list --status=closed --json --limit 100": `[]`,
-		"bd ready --json":                            `[]`,
-	}
 }
 
 func countCalls(f *exec.Fake, prefix string) int {
@@ -47,7 +79,8 @@ func countCalls(f *exec.Fake, prefix string) int {
 
 func TestRunSetupGateFails(t *testing.T) {
 	var buf bytes.Buffer
-	f := &exec.Fake{Path: map[string]bool{"bd": true}}
+	f := &exec.Fake{}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Run(context.Background(), RunConfig{RepoPath: t.TempDir()}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "setup incomplete")
@@ -56,7 +89,8 @@ func TestRunSetupGateFails(t *testing.T) {
 
 func TestRunAutoRequiresPrompt(t *testing.T) {
 	var buf bytes.Buffer
-	f := &exec.Fake{Path: map[string]bool{"bd": true}}
+	f := &exec.Fake{}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Run(context.Background(), RunConfig{RepoPath: mkRepo(t), Auto: true}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--prompt")
@@ -66,10 +100,11 @@ func TestRunAutoPausesAfterPlanForApprove(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
 	prd := prdPromptPrefix + "add login"
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+prd] = "prd-ok"
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
+	f := &exec.Fake{Outputs: map[string]string{
+		"opencode run " + prd:         "prd-ok",
+		"opencode run " + planPrompt: "plan-ok",
+	}}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Run(context.Background(), RunConfig{RepoPath: mkRepo(t), Auto: true, Prompt: "add login"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	out := buf.String()
@@ -84,10 +119,11 @@ func TestRunAutoPausesAfterPlanForApprove(t *testing.T) {
 func TestRunInteractiveLaunchesTUI(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode"] = "tui"
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
+	f := &exec.Fake{Outputs: map[string]string{
+		"opencode":                   "tui",
+		"opencode run " + planPrompt: "plan-ok",
+	}}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Run(context.Background(), RunConfig{RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	require.NotEmpty(t, f.Calls)
@@ -97,27 +133,35 @@ func TestRunInteractiveLaunchesTUI(t *testing.T) {
 
 func TestLoopBadMode(t *testing.T) {
 	var buf bytes.Buffer
-	f := &exec.Fake{Path: map[string]bool{"bd": true}}
+	f := &exec.Fake{}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Loop(context.Background(), LoopConfig{Mode: "bogus"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plan|build")
 }
 
-func TestLoopBdMissing(t *testing.T) {
+func TestLoopNoStore(t *testing.T) {
 	var buf bytes.Buffer
 	f := &exec.Fake{}
+	old := OpenLoopStore
+	OpenLoopStore = func(ctx context.Context, repo string) (LoopStore, error) {
+		if _, ok := store.RepoRoot(repo); !ok {
+			return nil, store.ErrNoStore
+		}
+		return nil, store.ErrNoStore
+	}
+	t.Cleanup(func() { OpenLoopStore = old })
 	err := Loop(context.Background(), LoopConfig{Mode: "plan"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bd not found")
+	assert.Contains(t, err.Error(), "no store")
 }
 
 func TestLoopPlanRunsOnce(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "plan"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	f := &exec.Fake{Outputs: map[string]string{"opencode run " + planPrompt: "plan-ok"}}
+	withFakeStore(t, &fakeLoopStore{})
+	err := Loop(context.Background(), LoopConfig{Mode: "plan", RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.Equal(t, 1, countCalls(f, "opencode run"))
 	assert.Contains(t, buf.String(), "FABRIK plan (iteration 1)")
@@ -128,30 +172,31 @@ func TestLoopPlanRunsOnce(t *testing.T) {
 func TestLoopPlanPushesWhenOptIn(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	outputs["git branch --show-current"] = "main"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	f := &exec.Fake{Outputs: map[string]string{
+		"opencode run " + planPrompt: "plan-ok",
+		"git branch --show-current":  "main",
+	}}
+	withFakeStore(t, &fakeLoopStore{})
+	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.True(t, f.Called("git push"), "push must run with explicit AutoPush opt-in")
 }
 
 func TestLoopBuildNoOpenBreaks(t *testing.T) {
 	var buf bytes.Buffer
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: emptyBdOutputs()}
-	err := Loop(context.Background(), LoopConfig{Mode: "build"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	f := &exec.Fake{}
+	withFakeStore(t, &fakeLoopStore{})
+	err := Loop(context.Background(), LoopConfig{Mode: "build", RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "No open Beads issues.")
+	assert.Contains(t, buf.String(), "No open issues.")
 	assert.Equal(t, 0, countCalls(f, "opencode run"))
 }
 
 func TestLoopBuildNoneReadyBreaks(t *testing.T) {
 	var buf bytes.Buffer
-	outputs := emptyBdOutputs()
-	outputs["bd list --status=open --json"] = `[{"id":"bd-1","title":"stuck"}]`
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "build"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	f := &exec.Fake{}
+	withFakeStore(t, &fakeLoopStore{unfinished: 1, done: 0, ready: nil})
+	err := Loop(context.Background(), LoopConfig{Mode: "build", RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "none are ready")
 	assert.Equal(t, 0, countCalls(f, "opencode run"))
@@ -160,27 +205,30 @@ func TestLoopBuildNoneReadyBreaks(t *testing.T) {
 func TestLoopBuildMaxCapsIterations(t *testing.T) {
 	var buf bytes.Buffer
 	buildPrompt := tmpl.MustRead("hub/PROMPT_build.md")
-	outputs := emptyBdOutputs()
-	outputs["bd list --status=open --json"] = `[{"id":"bd-1","title":"Do thing"}]`
-	outputs["bd ready --json"] = `[{"id":"bd-1","title":"Do thing"}]`
-	outputs["opencode run "+buildPrompt] = "build-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 2}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	id := "f-abc12345"
+	fake := &fakeLoopStore{
+		unfinished: 1,
+		ready:      []LoopIssue{{ID: id, Title: "Do thing"}},
+	}
+	f := &exec.Fake{Outputs: map[string]string{"opencode run " + buildPrompt: "build-ok"}}
+	withFakeStore(t, fake)
+	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 2, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.Equal(t, 2, countCalls(f, "opencode run"))
 	out := buf.String()
 	assert.Contains(t, out, "FABRIK build (iteration 2)")
-	assert.Contains(t, out, "Target: bd-1 — Do thing")
+	assert.Contains(t, out, "claim "+id)
+	assert.Contains(t, out, "Target: "+id+" — Do thing")
 	assert.Contains(t, out, "Reached max iterations: 2")
+	assert.Equal(t, []string{id, id}, fake.claims)
 }
 
 func TestLoopRunsInRepoDir(t *testing.T) {
 	var buf bytes.Buffer
 	repo := mkRepo(t)
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
+	f := &exec.Fake{Outputs: map[string]string{"opencode run " + planPrompt: "plan-ok"}}
+	withFakeStore(t, &fakeLoopStore{})
 	err := Loop(context.Background(), LoopConfig{RepoPath: repo, Mode: "plan"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	require.NotEmpty(t, f.Dirs, "all commands must run in the repo dir")
@@ -189,59 +237,68 @@ func TestLoopRunsInRepoDir(t *testing.T) {
 	}
 }
 
-func TestLoopBuildWrappedJSON(t *testing.T) {
+func TestLoopBuildClaimsFirstReady(t *testing.T) {
 	var buf bytes.Buffer
 	buildPrompt := tmpl.MustRead("hub/PROMPT_build.md")
-	outputs := emptyBdOutputs()
-	outputs["bd list --status=open --json"] = `{"issues":[{"id":"bd-9","title":"Wrapped"}]}`
-	outputs["bd ready --json"] = `{"issues":[{"id":"bd-9","title":"Wrapped"}]}`
-	outputs["opencode run "+buildPrompt] = "build-ok"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 1}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	id := "f-deadbeef"
+	fake := &fakeLoopStore{
+		unfinished: 1,
+		ready:      []LoopIssue{{ID: id, Title: "Wrapped"}},
+	}
+	f := &exec.Fake{Outputs: map[string]string{"opencode run " + buildPrompt: "build-ok"}}
+	withFakeStore(t, fake)
+	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 1, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.Equal(t, 1, countCalls(f, "opencode run"))
-	assert.Contains(t, buf.String(), "Target: bd-9 — Wrapped")
+	assert.Contains(t, buf.String(), "Target: "+id+" — Wrapped")
+	assert.Equal(t, []string{id}, fake.claims)
 }
 
 func TestLoopOpencodeFailurePropagates(t *testing.T) {
 	var buf bytes.Buffer
 	buildPrompt := tmpl.MustRead("hub/PROMPT_build.md")
-	outputs := emptyBdOutputs()
-	outputs["bd list --status=open --json"] = `[{"id":"bd-1","title":"Do thing"}]`
-	outputs["bd ready --json"] = `[{"id":"bd-1","title":"Do thing"}]`
+	id := "f-abc12345"
 	f := &exec.Fake{
-		Path:    map[string]bool{"bd": true},
-		Outputs: outputs,
+		Outputs: map[string]string{"opencode run " + buildPrompt: "build-ok"},
 		Errors:  map[string]error{"opencode run " + buildPrompt: assert.AnError},
 	}
-	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 1}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	withFakeStore(t, &fakeLoopStore{unfinished: 1, ready: []LoopIssue{{ID: id, Title: "Do thing"}}})
+	err := Loop(context.Background(), LoopConfig{Mode: "build", Max: 1, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "opencode run build")
 }
 
-func TestLoopBdErrorPropagates(t *testing.T) {
+func TestLoopStoreErrorPropagates(t *testing.T) {
 	var buf bytes.Buffer
-	outputs := emptyBdOutputs()
-	outputs["bd list --status=open --json"] = `[{"id":"bd-1","title":"Do thing"}]`
-	delete(outputs, "bd ready --json")
-	f := &exec.Fake{
-		Path:    map[string]bool{"bd": true},
-		Outputs: outputs,
-		Errors:  map[string]error{"bd ready --json": assert.AnError},
+	old := OpenLoopStore
+	OpenLoopStore = func(ctx context.Context, repo string) (LoopStore, error) {
+		return &errLoopStore{}, nil
 	}
-	err := Loop(context.Background(), LoopConfig{Mode: "build"}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
-	require.Error(t, err, "bd failures must surface, not read as empty")
-	assert.Contains(t, err.Error(), "bd ready --json")
+	t.Cleanup(func() { OpenLoopStore = old })
+	err := Loop(context.Background(), LoopConfig{Mode: "build", RepoPath: mkRepo(t)}, Deps{Exec: &exec.Fake{}, Out: &buf, Sleep: noopSleep})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "store")
 }
+
+type errLoopStore struct{}
+
+func (e *errLoopStore) Snapshot(ctx context.Context) (int, int, []LoopIssue, error) {
+	return 0, 0, nil, assert.AnError
+}
+func (e *errLoopStore) ClaimNext(ctx context.Context, by string) (LoopIssue, error) {
+	return LoopIssue{}, assert.AnError
+}
+func (e *errLoopStore) Close() error { return nil }
 
 func TestLoopPushUsesOriginDashDash(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+planPrompt] = "plan-ok"
-	outputs["git branch --show-current"] = "feature/cool-thing"
-	f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	f := &exec.Fake{Outputs: map[string]string{
+		"opencode run " + planPrompt: "plan-ok",
+		"git branch --show-current":  "feature/cool-thing",
+	}}
+	withFakeStore(t, &fakeLoopStore{})
+	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.True(t, f.Called("git push origin -- feature/cool-thing"), "push must use origin -- <branch>: %v", f.Calls)
 }
@@ -250,11 +307,12 @@ func TestLoopPushSanitizesBranch(t *testing.T) {
 	for _, evil := range []string{"-f", "evil; rm -rf", "a..b", "x y", ".hidden", ""} {
 		var buf bytes.Buffer
 		planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-		outputs := emptyBdOutputs()
-		outputs["opencode run "+planPrompt] = "plan-ok"
-		outputs["git branch --show-current"] = evil
-		f := &exec.Fake{Path: map[string]bool{"bd": true}, Outputs: outputs}
-		err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+		f := &exec.Fake{Outputs: map[string]string{
+			"opencode run " + planPrompt: "plan-ok",
+			"git branch --show-current": evil,
+		}}
+		withFakeStore(t, &fakeLoopStore{})
+		err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 		require.NoError(t, err, "branch %q", evil)
 		assert.False(t, f.Called("git push"), "unsafe/unknown branch %q must skip push: %v", evil, f.Calls)
 		assert.Contains(t, buf.String(), "unknown branch", "branch %q must report skipped push", evil)
@@ -264,14 +322,12 @@ func TestLoopPushSanitizesBranch(t *testing.T) {
 func TestLoopPushSkippedWhenBranchUnknown(t *testing.T) {
 	var buf bytes.Buffer
 	planPrompt := tmpl.MustRead("hub/PROMPT_plan.md")
-	outputs := emptyBdOutputs()
-	outputs["opencode run "+planPrompt] = "plan-ok"
 	f := &exec.Fake{
-		Path:    map[string]bool{"bd": true},
-		Outputs: outputs,
+		Outputs: map[string]string{"opencode run " + planPrompt: "plan-ok"},
 		Errors:  map[string]error{"git branch --show-current": assert.AnError},
 	}
-	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
+	withFakeStore(t, &fakeLoopStore{})
+	err := Loop(context.Background(), LoopConfig{Mode: "plan", AutoPush: true, RepoPath: mkRepo(t)}, Deps{Exec: f, Out: &buf, Sleep: noopSleep})
 	require.NoError(t, err)
 	assert.False(t, f.Called("git push"), "unknown branch (error) must skip push: %v", f.Calls)
 	assert.Contains(t, buf.String(), "unknown branch")
@@ -281,15 +337,13 @@ func TestCurrentBranchReturnsEmptyOnUnknown(t *testing.T) {
 	ctx := context.Background()
 	repo := t.TempDir()
 	f := &exec.Fake{
-		Path:    map[string]bool{},
-		Outputs: map[string]string{},
-		Errors:  map[string]error{"git branch --show-current": assert.AnError},
+		Errors: map[string]error{"git branch --show-current": assert.AnError},
 	}
 	assert.Empty(t, currentBranch(ctx, f, repo), "error must yield empty, not main fallback")
-	f2 := &exec.Fake{Path: map[string]bool{}, Outputs: map[string]string{"git branch --show-current": ""}}
+	f2 := &exec.Fake{Outputs: map[string]string{"git branch --show-current": ""}}
 	assert.Empty(t, currentBranch(ctx, f2, repo), "empty output must yield empty")
-	f3 := &exec.Fake{Path: map[string]bool{}, Outputs: map[string]string{"git branch --show-current": "-f"}}
+	f3 := &exec.Fake{Outputs: map[string]string{"git branch --show-current": "-f"}}
 	assert.Empty(t, currentBranch(ctx, f3, repo), "invalid branch must yield empty")
-	f4 := &exec.Fake{Path: map[string]bool{}, Outputs: map[string]string{"git branch --show-current": "feature/ok"}}
+	f4 := &exec.Fake{Outputs: map[string]string{"git branch --show-current": "feature/ok"}}
 	assert.Equal(t, "feature/ok", currentBranch(ctx, f4, repo))
 }

@@ -1,6 +1,6 @@
 # Release the fabrik Go CLI as binaries + npm/bun packages (no postinstall).
 #
-# Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + npm/*/package.json).
+# Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + cli/internal/version/package.json + gui/Cargo.toml + gui/Cargo.lock (neon) + npm/*/package.json).
 # Builds 5 targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
 # Version is stamped from package.json via ldflags.
 #
@@ -25,12 +25,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - { goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
-          - { goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
-          - { goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
-          - { goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
-          - { goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
-    runs-on: ubuntu-latest
+          - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
+          - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
+          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
+          - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
+          - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         working-directory: cli
@@ -48,23 +48,49 @@ jobs:
 
       - name: version
         id: version
-        run: echo "version=$(node -p "require('../package.json').version")" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: echo "version=$(node ../scripts/sync-versions.mjs --print-version)" >> "$GITHUB_OUTPUT"
 
       - name: check tag matches all package.json versions
+        shell: bash
         run: |
           node ../scripts/sync-versions.mjs --check
           test "v${{ steps.version.outputs.version }}" = "${{ github.ref_name }}" || {
             echo "tag ${{ github.ref_name }} != v${{ steps.version.outputs.version }} (package.json)"; exit 1
           }
 
+      - name: install build deps (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
+
+      - name: install build deps (macos)
+        if: runner.os == 'macOS'
+        run: brew install icu4c
+
+      - name: install build deps (windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu
+
       - name: test
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        env:
+          CGO_ENABLED: "1"
+          CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: go test ./...
 
       - name: build
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         env:
-          CGO_ENABLED: "0"
+          CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: |
           go build -trimpath \
             -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \

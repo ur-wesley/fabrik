@@ -11,8 +11,10 @@ func TestAllApps(t *testing.T) {
 	assert.Contains(t, All, Cursor)
 	assert.Contains(t, All, Pi)
 	assert.Contains(t, All, Antigravity)
+	assert.Contains(t, All, Gemini)
 	assert.Contains(t, All, OpenCode)
-	assert.Len(t, All, 4)
+	assert.Len(t, All, 5)
+	assert.Equal(t, []string{Cursor, Pi, Antigravity, Gemini, OpenCode}, All)
 }
 
 func TestNormalizeEmptyGivesAll(t *testing.T) {
@@ -40,6 +42,11 @@ func TestNormalizeValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cursor", "pi"}, res3)
 
+	// gemini normalizes
+	resGemini, err := Normalize([]string{"gemini"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gemini"}, resGemini)
+
 	// "all" keyword
 	res4, err := Normalize([]string{"all"})
 	require.NoError(t, err)
@@ -49,7 +56,7 @@ func TestNormalizeValid(t *testing.T) {
 func TestNormalizeInvalid(t *testing.T) {
 	_, err := Normalize([]string{"cursor", "unknown_app"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid app \"unknown_app\"")
+	assert.Contains(t, err.Error(), "unknown app: unknown_app")
 }
 
 func TestContains(t *testing.T) {
@@ -63,4 +70,6 @@ func TestContains(t *testing.T) {
 
 func TestFormatList(t *testing.T) {
 	assert.Equal(t, "Cursor, Antigravity", FormatList([]string{"cursor", "antigravity"}))
+	assert.Equal(t, "Gemini", DisplayName("gemini"))
+	assert.True(t, IsValid("gemini"))
 }

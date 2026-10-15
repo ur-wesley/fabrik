@@ -42,7 +42,7 @@ func TestConfirmPipedStdinDefaultsYes(t *testing.T) {
 func TestSelectAppsYesSkipsPrompt(t *testing.T) {
 	apps, err := SelectApps(nil, true)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"cursor", "pi", "antigravity", "opencode"}, apps)
+	assert.Equal(t, []string{"cursor", "pi", "antigravity", "gemini", "opencode"}, apps)
 
 	custom, err := SelectApps([]string{"pi", "antigravity"}, true)
 	require.NoError(t, err)
