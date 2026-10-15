@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
-          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo apt-get install -y gcc-aarch64-linux-gnu; fi
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; fi
 
       - name: install build deps (macos)
         if: runner.os == 'macOS'
@@ -124,6 +124,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CC: aarch64-linux-gnu-gcc
+          CXX: aarch64-linux-gnu-g++
           CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: |
