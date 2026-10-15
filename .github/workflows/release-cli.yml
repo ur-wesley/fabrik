@@ -27,7 +27,7 @@ jobs:
         include:
           - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
           - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
-          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
+          - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
           - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
           - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
     runs-on: ${{ matrix.runner }}
@@ -64,7 +64,6 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
-          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo dpkg --add-architecture arm64; sudo apt-get update; sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libicu-dev:arm64; fi
 
       - name: install build deps (macos)
         if: runner.os == 'macOS'
@@ -116,29 +115,8 @@ jobs:
           chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
           ls -l "../npm/${{ matrix.npmDir }}/bin"
 
-      - name: build (unix arm64)
-        if: runner.os != 'Windows' && matrix.goos == 'linux' && matrix.goarch == 'arm64'
-        shell: bash
-        env:
-          CGO_ENABLED: "1"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CC: aarch64-linux-gnu-gcc
-          CXX: aarch64-linux-gnu-g++
-          CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
-          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
-        run: |
-          go build -trimpath \
-            -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
-            -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
-          sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
-          mkdir -p "../npm/${{ matrix.npmDir }}/bin"
-          cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
-          chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
-          ls -l "../npm/${{ matrix.npmDir }}/bin"
-
-      - name: build (unix other)
-        if: runner.os != 'Windows' && !(matrix.goos == 'linux' && matrix.goarch == 'arm64')
+      - name: build (unix)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           CGO_ENABLED: "1"
