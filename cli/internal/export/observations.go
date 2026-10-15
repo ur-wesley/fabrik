@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/memory"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
@@ -26,7 +27,7 @@ func Observations(ctx context.Context) (ObservationsResult, error) {
 			return ObservationsResult{}, err
 		}
 		path := filepath.Join(dir, "export", "observations.jsonl")
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), fileutil.DirPerm); err != nil {
 			return ObservationsResult{}, err
 		}
 		f, err := os.Create(path)
@@ -52,7 +53,7 @@ func Observations(ctx context.Context) (ObservationsResult, error) {
 		return ObservationsResult{}, err
 	}
 	exportDir := filepath.Join(dir, "export")
-	if err := os.MkdirAll(exportDir, 0o755); err != nil {
+	if err := os.MkdirAll(exportDir, fileutil.DirPerm); err != nil {
 		return ObservationsResult{}, err
 	}
 	path := filepath.Join(exportDir, "observations.jsonl")

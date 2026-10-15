@@ -58,7 +58,7 @@ func TestLoopPlanOnceViaCLI(t *testing.T) {
 	withFakeRunner(t, f)
 	withCLILoopStore(t, &flowFakeStore{})
 	dir := loopRepo(t)
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 	out, err := run(t, "loop", "plan")
 	require.NoError(t, err)
 	assert.Contains(t, out, "FABRIK plan (iteration 1)")
@@ -86,7 +86,7 @@ func TestLoopMaxPassthroughViaCLI(t *testing.T) {
 	id := "f-abc12345"
 	withCLILoopStore(t, &flowFakeBuildStore{id: id})
 	dir := loopRepo(t)
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 	out, err := run(t, "loop", "build", "--max", "1")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Reached max iterations: 1")

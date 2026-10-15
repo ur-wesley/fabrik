@@ -1,7 +1,9 @@
 // Package selfupdate implements `fabrik self-update`.
 //
 // Fail-closed: the release must ship a <asset>.sha256 file or the update
-// is refused. Swap is rename-based so it works for running .exe files.
+// is refused. Swap is platform-specific (see swap_unix.go / swap_windows.go):
+// Unix renames the running binary aside, Windows stages the new binary and
+// falls back to a reboot-scheduled replace when the running .exe is locked.
 package selfupdate
 
 import (
@@ -9,11 +11,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -124,18 +126,11 @@ func (d *Deps) latest(ctx context.Context, want string) (Release, error) {
 	return r, nil
 }
 
-// assetName maps a platform key to the release asset name.
+// assetName is the canonical fabrik release asset name for key (platform
+// package): the single impl for self-update binaries, so naming cannot drift
+// from the release workflow matrix.
 func assetName(key string) (string, error) {
-	switch key {
-	case "windows_amd64":
-		return "fabrik-windows-amd64.exe", nil
-	case "linux_amd64":
-		return "fabrik-linux-amd64", nil
-	case "darwin_arm64":
-		return "fabrik-darwin-arm64", nil
-	default:
-		return "", fmt.Errorf("no self-update binary for %s — use: go install github.com/ur-wesley/fabrik/cli/cmd/fabrik@latest", key)
-	}
+	return platform.SelfUpdateAssetName(key)
 }
 
 // newer reports whether want is newer than cur. Non-semver cur (dev builds)
@@ -157,6 +152,20 @@ func norm(v string) string {
 		v = "v" + v
 	}
 	return v
+}
+
+// isNonInteractive mirrors the conditions under which ui.Confirm auto-answers
+// yes without prompting (CI, go test, piped stdin). Self-update swaps the
+// running binary, so it requires explicit --yes in that case (like reset)
+// instead of auto-confirming.
+func isNonInteractive() bool {
+	if flag.Lookup("test.v") != nil || os.Getenv("CI") != "" {
+		return true
+	}
+	if f, err := os.Stdin.Stat(); err == nil && (f.Mode()&os.ModeCharDevice) == 0 {
+		return true
+	}
+	return false
 }
 
 // Update resolves, verifies, and installs the update.
@@ -196,6 +205,11 @@ func Update(ctx context.Context, cfg Config, d Deps) error {
 		return fmt.Errorf("release %s has no checksum %s — refusing to update", rel.Tag, name+".sha256")
 	}
 
+	// Destructive swap: never rely on ui.Confirm's non-interactive auto-yes
+	// (CI, go test, piped stdin). Require explicit --yes instead, like reset.
+	if !cfg.Yes && isNonInteractive() {
+		return fmt.Errorf("self-update requires --yes in non-interactive mode (no TTY); re-run with --yes to install %s", rel.Tag)
+	}
 	if !ui.Confirm(fmt.Sprintf("Install %s?", rel.Tag), cfg.Yes) {
 		return fmt.Errorf("declined")
 	}
@@ -281,37 +295,4 @@ func verify(bin, sumFile string) error {
 		return fmt.Errorf("checksum mismatch — refusing to update")
 	}
 	return nil
-}
-
-// swap renames exe to exe.old and moves bin into place.
-func swap(exe, bin string) error {
-	old := exe + ".old"
-	os.Remove(old) // stale rollback from a previous run
-	if err := os.Rename(exe, old); err != nil {
-		return fmt.Errorf("backup current binary: %w", err)
-	}
-	if err := copyFile(bin, exe, 0o755); err != nil {
-		// best-effort rollback
-		_ = os.Rename(old, exe)
-		return fmt.Errorf("install new binary: %w", err)
-	}
-	return nil
-}
-
-func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
 }

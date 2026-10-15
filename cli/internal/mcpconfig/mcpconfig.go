@@ -8,12 +8,24 @@ import (
 	"strings"
 
 	"github.com/ur-wesley/fabrik/cli/internal/apps"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 )
-
 func fabrikEntry() map[string]any {
 	return map[string]any{
 		"command": "fabrik",
 		"args":    []any{"mcp"},
+	}
+}
+
+// fabrikOpenCodeEntry is the OpenCode mcp.fabrik shape per
+// https://opencode.ai/docs/mcp-servers/ (local server: type local,
+// command array, enabled flag). Cursor/Pi/Antigravity/Gemini CLI keep the
+// mcpServers shape (command string + args) via fabrikEntry.
+func fabrikOpenCodeEntry() map[string]any {
+	return map[string]any{
+		"type":    "local",
+		"command": []any{"fabrik", "mcp"},
+		"enabled": true,
 	}
 }
 
@@ -34,6 +46,10 @@ func Register(selected []string, repoRoot string) error {
 			}
 		case apps.Antigravity:
 			if err := registerAntigravity(); err != nil {
+				return err
+			}
+		case apps.Gemini:
+			if err := registerGemini(); err != nil {
 				return err
 			}
 		}
@@ -89,7 +105,7 @@ func registerOpenCode(repoRoot string) error {
 		mcp = map[string]any{}
 	}
 	removeEngram(mcp)
-	mcp["fabrik"] = fabrikEntry()
+	mcp["fabrik"] = fabrikOpenCodeEntry()
 	root["mcp"] = mcp
 	return writeJSON(path, root)
 }
@@ -108,6 +124,14 @@ func registerAntigravity() error {
 		return err
 	}
 	return patchCursorMCP(filepath.Join(home, ".gemini", "antigravity", "mcp.json"))
+}
+
+func registerGemini() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	return patchCursorMCP(filepath.Join(home, ".gemini", "settings.json"))
 }
 
 func removeEngram(servers map[string]any) {
@@ -137,7 +161,7 @@ func readJSONObject(path string) (map[string]any, error) {
 }
 
 func writeJSON(path string, root map[string]any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), fileutil.DirPerm); err != nil {
 		return err
 	}
 	out, err := json.MarshalIndent(root, "", "  ")
@@ -145,5 +169,5 @@ func writeJSON(path string, root map[string]any) error {
 		return err
 	}
 	out = append(out, '\n')
-	return os.WriteFile(path, out, 0o644)
+	return os.WriteFile(path, out, fileutil.ConfigPerm)
 }

@@ -118,7 +118,13 @@ func (d *DB) bfsNeighborhood(ctx context.Context, seeds []string, budget int) (Q
 	var edgeList []Edge
 	seenEdge := map[string]bool{}
 
-	for len(queue) > 0 && len(inSet) < budget {
+	// Drain the full queue even when seeds already fill the budget: seed
+	// visits still collect the edges among the chosen set (membership
+	// rule below), while growth (new neighbors) stays budget-gated, so
+	// a full budget yields a connected seed subgraph instead of zero
+	// edges. Each node is queued at most once (inSet marks on push),
+	// so the loop always terminates.
+	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
 		edges, err := d.edgesTouching(ctx, cur)

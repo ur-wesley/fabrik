@@ -13,19 +13,17 @@ import (
 
 func TestIssueNoStore(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 	_, err := run(t, "issue", "list")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no store")
 }
 
 func TestIssueListEmptyJSON(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+	skipWithoutCGO(t)
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 	out, err := run(t, "issue", "list", "--json")
 	require.NoError(t, err)
 	var list []map[string]any
@@ -34,12 +32,10 @@ func TestIssueListEmptyJSON(t *testing.T) {
 }
 
 func TestIssueCreateShow(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+	skipWithoutCGO(t)
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 	out, err := run(t, "issue", "create", "Document claim", "--acceptance", "Docs name exit codes", "--json")
 	require.NoError(t, err)
 	var iss map[string]any
@@ -55,12 +51,10 @@ func TestIssueCreateShow(t *testing.T) {
 }
 
 func TestIssueReadyClaimClose(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+	skipWithoutCGO(t)
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 
 	out, err := run(t, "issue", "create", "Blocker", "--json")
 	require.NoError(t, err)

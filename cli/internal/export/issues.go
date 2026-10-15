@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 )
 
 func Issues(ctx context.Context, st *doltstore.Store) (int, error) {
@@ -15,7 +16,7 @@ func Issues(ctx context.Context, st *doltstore.Store) (int, error) {
 		return 0, err
 	}
 	dir := filepath.Join(st.Repo, ".fabrik", "export")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, fileutil.DirPerm); err != nil {
 		return 0, err
 	}
 	path := filepath.Join(dir, "issues.jsonl")

@@ -12,9 +12,21 @@ import (
 func TestBinDirUnderHome(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
 	b, err := BinDir()
 	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(b, filepath.Join(".local", "bin")), b)
+	assert.True(t,
+		strings.HasSuffix(b, filepath.Join(".local", "bin")) ||
+			strings.HasSuffix(b, filepath.Join("fabrik", "bin")), b)
+}
+
+func TestOnPATH(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	assert.True(t, OnPATH(dir))
+	assert.False(t, OnPATH(filepath.Join(dir, "nope")))
+	assert.Empty(t, WarnIfNotOnPATH(dir))
+	assert.NotEmpty(t, WarnIfNotOnPATH(filepath.Join(dir, "nope")))
 }
 
 func TestGraphifySkillsAllApps(t *testing.T) {
@@ -22,12 +34,13 @@ func TestGraphifySkillsAllApps(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	dests, err := GraphifySkills()
 	require.NoError(t, err)
-	require.Len(t, dests, 4)
+	require.Len(t, dests, 5)
 	joined := strings.Join(dests, "\n")
 	assert.Contains(t, joined, ".cursor")
 	assert.Contains(t, joined, "opencode")
 	assert.Contains(t, joined, ".pi")
 	assert.Contains(t, joined, "antigravity")
+	assert.Contains(t, joined, filepath.Join(".gemini", "skills", "graphify", "SKILL.md"))
 	assert.NotContains(t, joined, ".claude")
 	assert.NotContains(t, joined, ".codex")
 }

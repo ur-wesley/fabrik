@@ -12,19 +12,22 @@ package reseter
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/ur-wesley/fabrik/cli/internal/deps"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
+	"github.com/ur-wesley/fabrik/cli/internal/migrater"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 	"github.com/ur-wesley/fabrik/cli/internal/ui"
 )
@@ -92,10 +95,9 @@ type PlanResult struct {
 	BeadsLockPath   string
 }
 
-var (
-	skillShimRe = regexp.MustCompile(`Run: fabrik show skill [A-Za-z0-9_-]+`)
-	agentShimRe = regexp.MustCompile(`Run: fabrik show agent [A-Za-z0-9_-]+`)
-)
+// Shim matching is canonical in migrater (migrater.IsSkillShim /
+// migrater.IsAgentShim); reseter only adds filename-stem and marker checks
+// around it so the two cannot drift apart.
 
 func thinSkillNames() []string {
 	var out []string
@@ -129,7 +131,7 @@ func isFabrikSkill(filePath string, body []byte) bool {
 		}
 	}
 	content := string(body)
-	if skillShimRe.MatchString(content) {
+	if migrater.IsSkillShim(content) {
 		return true
 	}
 	if strings.Contains(content, "# Fabrik skill ") {
@@ -149,7 +151,7 @@ func isFabrikAgent(filePath string, body []byte) bool {
 		}
 	}
 	content := string(body)
-	if agentShimRe.MatchString(content) {
+	if migrater.IsAgentShim(content) {
 		return true
 	}
 	if strings.Contains(content, "# Fabrik subagent ") || strings.Contains(content, "# Fabrik agent ") {
@@ -161,8 +163,28 @@ func isFabrikAgent(filePath string, body []byte) bool {
 	return false
 }
 
+// newlineOf reports the newline style of body ("\r\n" when it contains CRLF,
+// "\n" otherwise) so rewrites preserve the original endings.
+func newlineOf(body string) string {
+	if strings.Contains(body, "\r\n") {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+// splitLines splits body into lines, normalizing CRLF to LF for processing.
+// The second return is the original newline for re-joining, so CRLF files
+// round-trip byte-identical outside the removed sections.
+func splitLines(body string) ([]string, string) {
+	nl := newlineOf(body)
+	if nl == "\r\n" {
+		body = strings.ReplaceAll(body, "\r\n", "\n")
+	}
+	return strings.Split(body, "\n"), nl
+}
+
 func stripFabrikWorkflow(body string) string {
-	lines := strings.Split(body, "\n")
+	lines, nl := splitLines(body)
 	var result []string
 	inFabrik := false
 	for _, line := range lines {
@@ -180,11 +202,11 @@ func stripFabrikWorkflow(body string) string {
 		}
 		result = append(result, line)
 	}
-	return strings.Join(result, "\n")
+	return strings.Join(result, nl)
 }
 
 func stripBeadsBlock(body string) string {
-	lines := strings.Split(body, "\n")
+	lines, nl := splitLines(body)
 	var result []string
 	inBeads := false
 	for _, line := range lines {
@@ -201,7 +223,7 @@ func stripBeadsBlock(body string) string {
 		}
 		result = append(result, line)
 	}
-	return strings.Join(result, "\n")
+	return strings.Join(result, nl)
 }
 
 func stripAgentsMd(body string, removeBeads bool) (action AgentsMdAction, newContent string) {
@@ -225,7 +247,7 @@ func stripAgentsMd(body string, removeBeads bool) (action AgentsMdAction, newCon
 		return AgentsMdDelete, ""
 	}
 
-	return AgentsMdUpdate, strings.TrimRight(modified, "\r\n") + "\n"
+	return AgentsMdUpdate, strings.TrimRight(modified, "\r\n") + newlineOf(modified)
 }
 
 func planOpencode(filePath string) (OpencodeAction, string) {
@@ -234,11 +256,7 @@ func planOpencode(filePath string) (OpencodeAction, string) {
 		return OpencodeNone, ""
 	}
 
-	content := string(raw)
-	if !strings.Contains(content, "fabrik show agent") &&
-		!strings.Contains(content, "# Fabrik agent") &&
-		!strings.Contains(content, "# Fabrik subagent") &&
-		!strings.Contains(content, `"default_agent": "plan"`) {
+	if !looksLikeFabrikOpencode(string(raw)) {
 		return OpencodeNone, ""
 	}
 
@@ -257,31 +275,67 @@ func planOpencode(filePath string) (OpencodeAction, string) {
 		fabrikAgents[a] = true
 	}
 
-	hasCustomAgents := false
-	for name := range agentsRaw {
-		if !fabrikAgents[name] {
-			hasCustomAgents = true
-			break
-		}
-	}
-
-	hasCustomTopKeys := false
-	for k := range root {
-		if k != "$schema" && k != "default_agent" && k != "agent" {
-			hasCustomTopKeys = true
-			break
-		}
-	}
-
-	if !hasCustomAgents && !hasCustomTopKeys {
+	if !hasCustomOpencodeContent(root, agentsRaw, fabrikAgents) {
 		return OpencodeDelete, ""
 	}
 
+	return stripFabrikOpencode(root, agentsRaw, fabrikAgents)
+}
+
+// looksLikeFabrikOpencode is the cheap marker pre-check before JSON parsing.
+func looksLikeFabrikOpencode(content string) bool {
+	return strings.Contains(content, "fabrik show agent") ||
+		strings.Contains(content, "# Fabrik agent") ||
+		strings.Contains(content, "# Fabrik subagent") ||
+		strings.Contains(content, `"default_agent": "plan"`)
+}
+
+// hasCustomOpencodeContent reports whether the config holds anything beyond
+// Fabrik-owned wiring (mcp.fabrik counts as Fabrik-owned; any other mcp
+// server counts as custom).
+func hasCustomOpencodeContent(root map[string]interface{}, agentsRaw map[string]interface{}, fabrikAgents map[string]bool) bool {
+	for name := range agentsRaw {
+		if !fabrikAgents[name] {
+			return true
+		}
+	}
+	for k, v := range root {
+		if k == "$schema" || k == "default_agent" || k == "agent" {
+			continue
+		}
+		if k == "mcp" {
+			if mcpMap, ok := v.(map[string]interface{}); ok {
+				onlyFabrik := true
+				for mk := range mcpMap {
+					if mk != "fabrik" {
+						onlyFabrik = false
+						break
+					}
+				}
+				if onlyFabrik {
+					continue
+				}
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// stripFabrikOpencode removes Fabrik-owned agents/keys and re-encodes.
+func stripFabrikOpencode(root map[string]interface{}, agentsRaw map[string]interface{}, fabrikAgents map[string]bool) (OpencodeAction, string) {
 	for a := range fabrikAgents {
 		delete(agentsRaw, a)
 	}
 	if def, ok := root["default_agent"].(string); ok && def == "plan" {
 		delete(root, "default_agent")
+	}
+	// Strip Fabrik-owned mcp.fabrik wiring; drop mcp when empty.
+	if mcpMap, ok := root["mcp"].(map[string]interface{}); ok {
+		delete(mcpMap, "fabrik")
+		if len(mcpMap) == 0 {
+			delete(root, "mcp")
+		}
 	}
 
 	updated, err := json.MarshalIndent(root, "", "  ")
@@ -305,7 +359,23 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 		BeadsLockPath: filepath.Join(abs, ".beads.gate.lock"),
 	}
 
-	// 1. opencode.json
+	planOpencodeInto(result, abs)
+	planSkillFilesInto(result, abs)
+	planAgentFilesInto(result, abs)
+	if result.RemoveBeads {
+		planBeadsFilesInto(result, abs)
+	}
+	planAgentsMdInto(result, abs)
+	planFabrikStateInto(result, abs)
+
+	sort.Strings(result.FilesToDelete)
+	sort.Strings(result.DirsToDelete)
+	result.FilesToDelete = slices.Compact(result.FilesToDelete)
+
+	return result, nil
+}
+
+func planOpencodeInto(result *PlanResult, abs string) {
 	opencodePath := filepath.Join(abs, "opencode.json")
 	if _, err := os.Stat(opencodePath); err == nil {
 		action, updated := planOpencode(opencodePath)
@@ -318,8 +388,9 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 	if _, err := os.Stat(repoMCP); err == nil {
 		result.FilesToDelete = append(result.FilesToDelete, repoMCP)
 	}
+}
 
-	// 2. Cursor skills & agents
+func planSkillFilesInto(result *PlanResult, abs string) {
 	for _, dir := range []string{
 		filepath.Join(abs, ".cursor", "rules"),
 		filepath.Join(abs, ".cursor", "rules", "agents"),
@@ -344,7 +415,9 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 			return nil
 		})
 	}
+}
 
+func planAgentFilesInto(result *PlanResult, abs string) {
 	for _, dir := range []string{
 		filepath.Join(abs, ".cursor", "agents"),
 		filepath.Join(abs, ".pi", "agent", "agents"),
@@ -367,20 +440,20 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 			return nil
 		})
 	}
+}
 
-	// 3. Beads wiring (if RemoveBeads)
-	if result.RemoveBeads {
-		beadsMdc := filepath.Join(abs, ".cursor", "rules", "beads.mdc")
-		if _, err := os.Stat(beadsMdc); err == nil {
-			result.FilesToDelete = append(result.FilesToDelete, beadsMdc)
-		}
-		hooksJSON := filepath.Join(abs, ".cursor", "hooks.json")
-		if _, err := os.Stat(hooksJSON); err == nil {
-			result.FilesToDelete = append(result.FilesToDelete, hooksJSON)
-		}
+func planBeadsFilesInto(result *PlanResult, abs string) {
+	beadsMdc := filepath.Join(abs, ".cursor", "rules", "beads.mdc")
+	if _, err := os.Stat(beadsMdc); err == nil {
+		result.FilesToDelete = append(result.FilesToDelete, beadsMdc)
 	}
+	hooksJSON := filepath.Join(abs, ".cursor", "hooks.json")
+	if _, err := os.Stat(hooksJSON); err == nil {
+		result.FilesToDelete = append(result.FilesToDelete, hooksJSON)
+	}
+}
 
-	// 4. AGENTS.md
+func planAgentsMdInto(result *PlanResult, abs string) {
 	agentsPath := filepath.Join(abs, "AGENTS.md")
 	if body, err := os.ReadFile(agentsPath); err == nil {
 		action, updated := stripAgentsMd(string(body), result.RemoveBeads)
@@ -388,7 +461,9 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 		result.AgentsMdPath = agentsPath
 		result.AgentsMdContent = updated
 	}
+}
 
+func planFabrikStateInto(result *PlanResult, abs string) {
 	fabrikDir := filepath.Join(abs, ".fabrik")
 	if st, err := os.Stat(fabrikDir); err == nil && st.IsDir() {
 		result.DirsToDelete = append(result.DirsToDelete,
@@ -405,50 +480,37 @@ func Plan(repo string, cfg Config) (*PlanResult, error) {
 			}
 		}
 	}
-	sort.Strings(result.FilesToDelete)
-	sort.Strings(result.DirsToDelete)
-	result.FilesToDelete = slices.Compact(result.FilesToDelete)
+}
 
-	return result, nil
+// isNonInteractive mirrors the conditions under which ui.Confirm auto-answers
+// yes without prompting (CI, go test, piped stdin). Reset is destructive, so
+// Reset requires explicit --yes in that case instead of auto-confirming.
+func isNonInteractive() bool {
+	if flag.Lookup("test.v") != nil || os.Getenv("CI") != "" {
+		return true
+	}
+	if f, err := os.Stdin.Stat(); err == nil && (f.Mode()&os.ModeCharDevice) == 0 {
+		return true
+	}
+	return false
 }
 
 // Reset removes Fabrik configuration from repoPath.
 func Reset(ctx context.Context, cfg Config, d Deps) error {
+	useDefaultConfirm := d.Confirm == nil
 	d.defaults()
 	out := d.Out
 
-	target := cfg.RepoPath
-	if target == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		target = cwd
-	}
-
-	abs, err := filepath.Abs(target)
+	abs, err := resolveRepoDir(cfg.RepoPath)
 	if err != nil {
 		return err
 	}
 
-	if !cfg.DryRun && !cfg.Yes {
-		if !d.Confirm(fmt.Sprintf("Reset Fabrik configuration in %s?", abs), true) {
-			return fmt.Errorf("reset declined")
-		}
+	if err := confirmReset(cfg, d, useDefaultConfirm, abs); err != nil {
+		return err
 	}
 
-	removeBeads := cfg.Beads
-	if !cfg.Beads && !cfg.NoBeads && !cfg.Yes && !cfg.DryRun {
-		hasBeadsDir := exists(filepath.Join(abs, ".beads"))
-		hasBeadsRule := exists(filepath.Join(abs, ".cursor", "rules", "beads.mdc"))
-		if hasBeadsDir || hasBeadsRule {
-			if d.Confirm("Remove Beads integration and .beads as well?", false) {
-				removeBeads = true
-			}
-		}
-	}
-
-	cfg.Beads = removeBeads
+	cfg.Beads = resolveRemoveBeads(cfg, d, abs)
 	plan, err := Plan(abs, cfg)
 	if err != nil {
 		return err
@@ -461,56 +523,61 @@ func Reset(ctx context.Context, cfg Config, d Deps) error {
 	return executeReset(ctx, out, plan, d)
 }
 
+func resolveRepoDir(target string) (string, error) {
+	if target == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		target = cwd
+	}
+	return filepath.Abs(target)
+}
+
+func confirmReset(cfg Config, d Deps, useDefaultConfirm bool, abs string) error {
+	if cfg.DryRun || cfg.Yes {
+		return nil
+	}
+	// Destructive: never rely on ui.Confirm's non-interactive auto-yes
+	// (CI, go test, piped stdin). Require explicit --yes instead.
+	if useDefaultConfirm && isNonInteractive() {
+		return fmt.Errorf("reset requires --yes in non-interactive mode (no TTY); re-run with --yes to confirm deletion in %s", abs)
+	}
+	if !d.Confirm(fmt.Sprintf("Reset Fabrik configuration in %s?", abs), cfg.Yes) {
+		return fmt.Errorf("reset declined")
+	}
+	return nil
+}
+
+func resolveRemoveBeads(cfg Config, d Deps, abs string) bool {
+	if cfg.Beads || cfg.NoBeads || cfg.Yes || cfg.DryRun {
+		return cfg.Beads
+	}
+	hasBeadsDir := exists(filepath.Join(abs, ".beads"))
+	hasBeadsRule := exists(filepath.Join(abs, ".cursor", "rules", "beads.mdc"))
+	if (hasBeadsDir || hasBeadsRule) && d.Confirm("Remove Beads integration and .beads as well?", false) {
+		return true
+	}
+	return false
+}
+
+// dryRunPrinter carries the output state through the small dry-run sections.
+type dryRunPrinter struct {
+	out     io.Writer
+	abs     string
+	plan    *PlanResult
+	actions bool
+}
+
 func executeDryRun(out io.Writer, plan *PlanResult) error {
-	abs := plan.RepoDir
-	hasActions := false
+	p := &dryRunPrinter{out: out, abs: plan.RepoDir, plan: plan}
+	p.printOpencode()
+	p.printFiles()
+	p.printAgentsMd()
+	p.printDirs()
+	p.printBeads()
 
-	if plan.OpencodeAction == OpencodeDelete {
-		rel, _ := filepath.Rel(abs, plan.OpencodePath)
-		fmt.Fprintf(out, "would delete %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	} else if plan.OpencodeAction == OpencodeUpdate {
-		rel, _ := filepath.Rel(abs, plan.OpencodePath)
-		fmt.Fprintf(out, "would remove Fabrik agents from %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	}
-
-	for _, f := range plan.FilesToDelete {
-		rel, _ := filepath.Rel(abs, f)
-		fmt.Fprintf(out, "would delete %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	}
-
-	if plan.AgentsMdAction == AgentsMdDelete {
-		rel, _ := filepath.Rel(abs, plan.AgentsMdPath)
-		fmt.Fprintf(out, "would delete %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	} else if plan.AgentsMdAction == AgentsMdUpdate {
-		rel, _ := filepath.Rel(abs, plan.AgentsMdPath)
-		fmt.Fprintf(out, "would strip Fabrik workflow from %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	}
-
-	for _, dir := range plan.DirsToDelete {
-		rel, _ := filepath.Rel(abs, dir)
-		fmt.Fprintf(out, "would delete %s\n", filepath.ToSlash(rel))
-		hasActions = true
-	}
-
-	if plan.RemoveBeads {
-		if exists(plan.BeadsDirPath) {
-			fmt.Fprintln(out, "would delete .beads (entire directory)")
-			hasActions = true
-		}
-		if exists(plan.BeadsLockPath) {
-			fmt.Fprintln(out, "would delete .beads.gate.lock")
-			hasActions = true
-		}
-		fmt.Fprintln(out, "would run bd setup cursor --remove and bd setup opencode --remove")
-		hasActions = true
-	}
-
-	if !hasActions {
+	if !p.actions {
 		fmt.Fprintln(out, "reset: nothing to remove")
 		return nil
 	}
@@ -519,71 +586,199 @@ func executeDryRun(out io.Writer, plan *PlanResult) error {
 	return nil
 }
 
-func executeReset(ctx context.Context, out io.Writer, plan *PlanResult, d Deps) error {
-	abs := plan.RepoDir
-	deletedCount := 0
+func (p *dryRunPrinter) printOpencode() {
+	if p.plan.OpencodeAction == OpencodeDelete {
+		rel, _ := filepath.Rel(p.abs, p.plan.OpencodePath)
+		fmt.Fprintf(p.out, "would delete %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	} else if p.plan.OpencodeAction == OpencodeUpdate {
+		rel, _ := filepath.Rel(p.abs, p.plan.OpencodePath)
+		fmt.Fprintf(p.out, "would remove Fabrik agents from %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	}
+}
 
-	// 1. opencode.json
+func (p *dryRunPrinter) printFiles() {
+	for _, f := range p.plan.FilesToDelete {
+		rel, _ := filepath.Rel(p.abs, f)
+		fmt.Fprintf(p.out, "would delete %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	}
+}
+
+func (p *dryRunPrinter) printAgentsMd() {
+	if p.plan.AgentsMdAction == AgentsMdDelete {
+		rel, _ := filepath.Rel(p.abs, p.plan.AgentsMdPath)
+		fmt.Fprintf(p.out, "would delete %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	} else if p.plan.AgentsMdAction == AgentsMdUpdate {
+		rel, _ := filepath.Rel(p.abs, p.plan.AgentsMdPath)
+		fmt.Fprintf(p.out, "would strip Fabrik workflow from %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	}
+}
+
+func (p *dryRunPrinter) printDirs() {
+	for _, dir := range p.plan.DirsToDelete {
+		rel, _ := filepath.Rel(p.abs, dir)
+		fmt.Fprintf(p.out, "would delete %s\n", filepath.ToSlash(rel))
+		p.actions = true
+	}
+}
+
+func (p *dryRunPrinter) printBeads() {
+	if !p.plan.RemoveBeads {
+		return
+	}
+	if exists(p.plan.BeadsDirPath) {
+		fmt.Fprintln(p.out, "would delete .beads (entire directory)")
+		p.actions = true
+	}
+	if exists(p.plan.BeadsLockPath) {
+		fmt.Fprintln(p.out, "would delete .beads.gate.lock")
+		p.actions = true
+	}
+	fmt.Fprintln(p.out, "would run bd setup cursor --remove and bd setup opencode --remove")
+	p.actions = true
+}
+
+func executeReset(ctx context.Context, out io.Writer, plan *PlanResult, d Deps) error {
+	a := &resetApplier{ctx: ctx, out: out, plan: plan, d: d}
+	a.applyOpencode()
+	a.deletePlannedFiles()
+	a.applyAgentsMd()
+	a.removeFabrikState()
+	a.removeBeadsWiring()
+	a.pruneEmptyDirs()
+
+	if len(a.errs) > 0 {
+		return errors.Join(a.errs...)
+	}
+
+	if a.deleted == 0 && plan.OpencodeAction == OpencodeNone && plan.AgentsMdAction == AgentsMdNone {
+		fmt.Fprintln(out, "reset: nothing to remove")
+		return nil
+	}
+
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "Done. Fabrik configuration removed. Client apps reverted to default behaviour.")
+	return nil
+}
+
+// resetApplier carries the mutable execution state (deleted count, errors)
+// through the small apply steps below so executeReset stays a flat
+// step list with behavior identical to the former monolith.
+type resetApplier struct {
+	ctx     context.Context
+	out     io.Writer
+	plan    *PlanResult
+	d       Deps
+	deleted int
+	errs    []error
+}
+
+func (a *resetApplier) applyOpencode() {
+	plan := a.plan
 	if plan.OpencodeAction == OpencodeDelete {
-		if err := os.Remove(plan.OpencodePath); err == nil {
-			fmt.Fprintln(out, "deleted opencode.json")
-			deletedCount++
+		if err := os.Remove(plan.OpencodePath); err == nil || os.IsNotExist(err) {
+			fmt.Fprintln(a.out, "deleted opencode.json")
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove opencode.json: %w", err))
 		}
 	} else if plan.OpencodeAction == OpencodeUpdate {
-		if err := os.WriteFile(plan.OpencodePath, []byte(plan.OpencodeContent), 0o644); err == nil {
-			fmt.Fprintln(out, "updated opencode.json (removed Fabrik agents)")
+		if err := os.WriteFile(plan.OpencodePath, []byte(plan.OpencodeContent), fileutil.ConfigPerm); err == nil {
+			fmt.Fprintln(a.out, "updated opencode.json (removed Fabrik agents)")
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("write opencode.json: %w", err))
 		}
 	}
-	stripOpencodeFabrikMCP(plan.OpencodePath)
+	if err := stripOpencodeFabrikMCP(plan.OpencodePath); err != nil {
+		a.errs = append(a.errs, err)
+	}
+}
 
-	// 2. files to delete (skills, agents, beads rules)
-	for _, f := range plan.FilesToDelete {
+func (a *resetApplier) deletePlannedFiles() {
+	abs := a.plan.RepoDir
+	for _, f := range a.plan.FilesToDelete {
 		rel, _ := filepath.Rel(abs, f)
 		if err := os.Remove(f); err == nil || os.IsNotExist(err) {
-			fmt.Fprintf(out, "deleted %s\n", filepath.ToSlash(rel))
-			deletedCount++
+			fmt.Fprintf(a.out, "deleted %s\n", filepath.ToSlash(rel))
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove %s: %w", filepath.ToSlash(rel), err))
 		}
 	}
+}
 
-	// 3. AGENTS.md
+func (a *resetApplier) applyAgentsMd() {
+	plan := a.plan
 	if plan.AgentsMdAction == AgentsMdDelete {
-		if err := os.Remove(plan.AgentsMdPath); err == nil {
-			fmt.Fprintln(out, "deleted AGENTS.md")
-			deletedCount++
+		if err := os.Remove(plan.AgentsMdPath); err == nil || os.IsNotExist(err) {
+			fmt.Fprintln(a.out, "deleted AGENTS.md")
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove AGENTS.md: %w", err))
 		}
 	} else if plan.AgentsMdAction == AgentsMdUpdate {
-		if err := os.WriteFile(plan.AgentsMdPath, []byte(plan.AgentsMdContent), 0o644); err == nil {
-			fmt.Fprintln(out, "updated AGENTS.md (removed Fabrik workflow)")
+		if err := os.WriteFile(plan.AgentsMdPath, []byte(plan.AgentsMdContent), fileutil.ConfigPerm); err == nil {
+			fmt.Fprintln(a.out, "updated AGENTS.md (removed Fabrik workflow)")
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("write AGENTS.md: %w", err))
 		}
 	}
+}
 
-	for _, dir := range plan.DirsToDelete {
+func (a *resetApplier) removeFabrikState() {
+	abs := a.plan.RepoDir
+	for _, dir := range a.plan.DirsToDelete {
 		rel, _ := filepath.Rel(abs, dir)
 		if err := os.RemoveAll(dir); err == nil || os.IsNotExist(err) {
-			fmt.Fprintf(out, "deleted %s\n", filepath.ToSlash(rel))
-			deletedCount++
+			fmt.Fprintf(a.out, "deleted %s\n", filepath.ToSlash(rel))
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove %s: %w", filepath.ToSlash(rel), err))
 		}
 	}
-	stripFabrikGitignore(abs, out)
+	if err := stripFabrikGitignore(abs, a.out); err != nil {
+		a.errs = append(a.errs, err)
+	}
+}
 
-	// 5. Beads unwiring and removal
-	if plan.RemoveBeads {
-		if _, err := d.Exec.LookPath("bd"); err == nil {
-			_, _ = d.Exec.RunIn(ctx, abs, "bd", "setup", "cursor", "--remove")
-			_, _ = d.Exec.RunIn(ctx, abs, "bd", "setup", "opencode", "--remove")
+func (a *resetApplier) removeBeadsWiring() {
+	plan := a.plan
+	if !plan.RemoveBeads {
+		return
+	}
+	if _, err := a.d.Exec.LookPath("bd"); err == nil {
+		if _, err := a.d.Exec.RunIn(a.ctx, plan.RepoDir, "bd", "setup", "cursor", "--remove"); err != nil {
+			a.errs = append(a.errs, fmt.Errorf("bd setup cursor --remove: %w", err))
 		}
-		if exists(plan.BeadsDirPath) {
-			_ = os.RemoveAll(plan.BeadsDirPath)
-			fmt.Fprintln(out, "deleted .beads/")
-			deletedCount++
-		}
-		if exists(plan.BeadsLockPath) {
-			_ = os.Remove(plan.BeadsLockPath)
-			deletedCount++
+		if _, err := a.d.Exec.RunIn(a.ctx, plan.RepoDir, "bd", "setup", "opencode", "--remove"); err != nil {
+			a.errs = append(a.errs, fmt.Errorf("bd setup opencode --remove: %w", err))
 		}
 	}
+	if exists(plan.BeadsDirPath) {
+		if err := os.RemoveAll(plan.BeadsDirPath); err == nil {
+			fmt.Fprintln(a.out, "deleted .beads/")
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove .beads: %w", err))
+		}
+	}
+	if exists(plan.BeadsLockPath) {
+		if err := os.Remove(plan.BeadsLockPath); err == nil || os.IsNotExist(err) {
+			a.deleted++
+		} else {
+			a.errs = append(a.errs, fmt.Errorf("remove .beads.gate.lock: %w", err))
+		}
+	}
+}
 
-	// 6. Prune empty dirs
+func (a *resetApplier) pruneEmptyDirs() {
+	abs := a.plan.RepoDir
+	// Prune empty dirs (including .fabrik itself when only generated
+	// state was removed and no hub content remains).
 	pruneDirs := []string{
 		filepath.Join(abs, ".cursor", "agents"),
 		filepath.Join(abs, ".cursor", "rules", "agents"),
@@ -596,19 +791,11 @@ func executeReset(ctx context.Context, out io.Writer, plan *PlanResult, d Deps) 
 		filepath.Join(abs, ".pi", "agent"),
 		filepath.Join(abs, ".pi", "skills"),
 		filepath.Join(abs, ".pi"),
+		filepath.Join(abs, ".fabrik"),
 	}
 	for _, dir := range pruneDirs {
 		removeIfEmpty(dir)
 	}
-
-	if deletedCount == 0 && plan.OpencodeAction == OpencodeNone && plan.AgentsMdAction == AgentsMdNone {
-		fmt.Fprintln(out, "reset: nothing to remove")
-		return nil
-	}
-
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Done. Fabrik configuration removed. Client apps reverted to default behaviour.")
-	return nil
 }
 
 func removeIfEmpty(dir string) {
@@ -629,21 +816,24 @@ var fabrikGitignoreLines = []string{
 	".fabrik/export/",
 }
 
-func stripOpencodeFabrikMCP(path string) {
+func stripOpencodeFabrikMCP(path string) error {
 	if path == "" {
-		return
+		return nil
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read opencode.json: %w", err)
 	}
 	var root map[string]interface{}
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return
+		return nil
 	}
 	mcp, ok := root["mcp"].(map[string]interface{})
 	if !ok {
-		return
+		return nil
 	}
 	delete(mcp, "fabrik")
 	if len(mcp) == 0 {
@@ -651,18 +841,24 @@ func stripOpencodeFabrikMCP(path string) {
 	}
 	out, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("encode opencode.json: %w", err)
 	}
-	_ = os.WriteFile(path, append(out, '\n'), 0o644)
+	if err := os.WriteFile(path, append(out, '\n'), fileutil.ConfigPerm); err != nil {
+		return fmt.Errorf("write opencode.json: %w", err)
+	}
+	return nil
 }
 
-func stripFabrikGitignore(abs string, out io.Writer) {
+func stripFabrikGitignore(abs string, out io.Writer) error {
 	path := filepath.Join(abs, ".gitignore")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read .gitignore: %w", err)
 	}
-	lines := strings.Split(string(data), "\n")
+	lines, nl := splitLines(string(data))
 	var keep []string
 	removed := false
 	for _, line := range lines {
@@ -674,13 +870,15 @@ func stripFabrikGitignore(abs string, out io.Writer) {
 		keep = append(keep, line)
 	}
 	if !removed {
-		return
+		return nil
 	}
-	body := strings.TrimRight(strings.Join(keep, "\n"), "\n")
+	body := strings.TrimRight(strings.Join(keep, nl), "\r\n")
 	if body != "" {
-		body += "\n"
+		body += nl
 	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err == nil {
-		fmt.Fprintln(out, "updated .gitignore")
+	if err := os.WriteFile(path, []byte(body), fileutil.ConfigPerm); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
 	}
+	fmt.Fprintln(out, "updated .gitignore")
+	return nil
 }

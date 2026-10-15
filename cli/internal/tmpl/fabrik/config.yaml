@@ -2,6 +2,7 @@ apps:
   - cursor
   - pi
   - antigravity
+  - gemini
   - opencode
 
 agent: pi

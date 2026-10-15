@@ -10,6 +10,7 @@ import (
 
 	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
@@ -102,7 +103,7 @@ func ensureRepoGitignore(abs string) error {
 		return nil
 	}
 	body := strings.Join(lines, "\n") + "\n"
-	return os.WriteFile(path, []byte(body), 0o644)
+	return os.WriteFile(path, []byte(body), fileutil.ConfigPerm)
 }
 
 func firstLine(s string) string {

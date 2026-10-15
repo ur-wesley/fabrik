@@ -11,7 +11,9 @@ import (
 
 	"github.com/ur-wesley/fabrik/cli/internal/apps"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/mcpconfig"
+	"github.com/ur-wesley/fabrik/cli/internal/plugin"
 	"github.com/ur-wesley/fabrik/cli/internal/repo"
 	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
@@ -36,6 +38,9 @@ type Deps struct {
 	SelectApps  func(defaults []string, yes bool) ([]string, error)
 	EnsureMemory func(ctx context.Context) (string, error)
 	RegisterMCP func(apps []string, repo string) error
+	// SyncPlugin refreshes the global Antigravity/Gemini CLI plugin copy.
+	// Defaults to plugin.Sync against the user home.
+	SyncPlugin func(apps []string, dryRun bool, out io.Writer) error
 }
 
 func (d *Deps) defaults() {
@@ -57,6 +62,15 @@ func (d *Deps) defaults() {
 	if d.RegisterMCP == nil {
 		d.RegisterMCP = mcpconfig.Register
 	}
+	if d.SyncPlugin == nil {
+		d.SyncPlugin = func(apps []string, dryRun bool, out io.Writer) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			return plugin.Sync(home, dryRun, out)
+		}
+	}
 }
 
 func ensureMemoryDB(ctx context.Context) (string, error) {
@@ -65,7 +79,7 @@ func ensureMemoryDB(ctx context.Context) (string, error) {
 		return "", err
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, fileutil.DirPerm); err != nil {
 		return "", err
 	}
 	if _, err := sqlmigrate.ApplySQLite(ctx, "memory", path); err != nil {
@@ -101,10 +115,20 @@ func Setup(ctx context.Context, cfg Config, d Deps) error {
 
 	if cfg.DryRun {
 		fmt.Fprintf(out, "dry-run: mcp register %s\n", strings.Join(selectedApps, ","))
-	} else if err := d.RegisterMCP(selectedApps, ""); err != nil {
+	} else if err := d.RegisterMCP(selectedApps, setupRepoAbs(cfg)); err != nil {
 		return err
 	} else {
 		fmt.Fprintf(out, "mcp registered %s\n", strings.Join(selectedApps, ", "))
+	}
+
+	// The global plugin copy (~/.gemini/config/plugins/fabrik) is shared by
+	// Antigravity and Gemini CLI and goes stale silently (nothing else
+	// installs it), so refresh it from the embedded source on setup.
+	// Dry-run prints `dry-run: sync fabrik plugin ...` via plugin.Sync.
+	if apps.Contains(selectedApps, apps.Antigravity) || apps.Contains(selectedApps, apps.Gemini) {
+		if err := d.SyncPlugin(selectedApps, cfg.DryRun, out); err != nil {
+			return err
+		}
 	}
 
 	initOut, err := initCurrentRepo(out, cfg, d)
@@ -115,6 +139,25 @@ func Setup(ctx context.Context, cfg Config, d Deps) error {
 		fmt.Fprint(out, initOut)
 	}
 	return nil
+}
+
+// setupRepoAbs resolves the repo dir for MCP registration so
+// `fabrik setup --repo <dir>` patches <dir>/opencode.json (not cwd).
+// Best effort: falls back to "" (caller cwd behavior) when unresolvable.
+func setupRepoAbs(cfg Config) string {
+	repoPath := cfg.RepoPath
+	if repoPath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		repoPath = cwd
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		return ""
+	}
+	return abs
 }
 
 func resolveApps(cfg Config, d Deps) ([]string, error) {

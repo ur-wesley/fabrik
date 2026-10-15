@@ -29,13 +29,15 @@ func TestAssetName(t *testing.T) {
 	for _, tc := range [][2]string{
 		{"windows_amd64", "fabrik-windows-amd64.exe"},
 		{"linux_amd64", "fabrik-linux-amd64"},
+		{"linux_arm64", "fabrik-linux-arm64"},
+		{"darwin_amd64", "fabrik-darwin-amd64"},
 		{"darwin_arm64", "fabrik-darwin-arm64"},
 	} {
 		got, err := assetName(tc[0])
 		require.NoError(t, err)
 		assert.Equal(t, tc[1], got)
 	}
-	_, err := assetName("linux_arm64")
+	_, err := assetName("windows_arm64")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "go install")
 }
@@ -175,7 +177,7 @@ func TestUpdateUnsupportedPlatform(t *testing.T) {
 		APIBase:     srv.URL,
 		Client:      srv.Client(),
 		ExecPath:    fakeExe(t, "x"),
-		PlatformKey: func() (string, error) { return "linux_arm64", nil },
+		PlatformKey: func() (string, error) { return "windows_arm64", nil },
 		Current:     "1.0.0",
 	})
 	require.Error(t, err)

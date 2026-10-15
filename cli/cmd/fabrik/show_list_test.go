@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -107,8 +108,14 @@ func TestListAllShowsPromptVariants(t *testing.T) {
 	}
 }
 
-func TestMigrateRequiresPrune(t *testing.T) {
-	_, err := run(t, "migrate")
-	require.Error(t, err, "bare migrate must fail, not print help with exit 0")
-	assert.Contains(t, err.Error(), "--prune")
+func TestMigrateEmptyPrintsNothingToMigrate(t *testing.T) {
+	// cli-hrq: bare migrate runs the legacy import; in an empty repo it
+	// exits 0 with "migrate: nothing to migrate" (hermetic: temp cwd plus
+	// temp memory/Engram locations, never the real stores).
+	t.Chdir(t.TempDir())
+	t.Setenv("FABRIK_MEMORY_DIR", t.TempDir())
+	t.Setenv("FABRIK_ENGRAM_DB", filepath.Join(t.TempDir(), "no-engram.db"))
+	out, err := run(t, "migrate")
+	require.NoError(t, err)
+	assert.Contains(t, out, "migrate: nothing to migrate")
 }

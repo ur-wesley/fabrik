@@ -22,7 +22,7 @@ func newGraphCmd() *cobra.Command {
 		newGraphPathCmd(),
 		newGraphExplainCmd(),
 		newGraphExploreCmd(),
-		newGraphContextCmd(),
+		newGraphOverviewCmd(),		newGraphContextCmd(),
 		newGraphImpactCmd(),
 		newGraphDetectChangesCmd(),
 	)
@@ -221,6 +221,37 @@ func newGraphExploreCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable output")
 	cmd.Flags().IntVar(&budget, "budget", 40, "max symbols")
 	cmd.Flags().StringVar(&issueID, "issue", "", "seed from issue id (f-…)")
+	return cmd
+}
+
+func newGraphOverviewCmd() *cobra.Command {
+	var asJSON bool
+	var budget int
+	cmd := &cobra.Command{
+		Use:   "overview",
+		Short: "Top symbols by edge degree",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if budget < 1 || budget > 200 {
+				return clierr.Usage("fabrik: budget must be 1..200")
+			}
+			db, err := openGraph(cmd)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			r, err := db.Overview(cmd.Context(), budget)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return graph.PrintQueryJSON(cmd.OutOrStdout(), r)
+			}
+			graph.PrintQuery(cmd.OutOrStdout(), r)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable output")
+	cmd.Flags().IntVar(&budget, "budget", 60, "max nodes (1-200)")
 	return cmd
 }
 

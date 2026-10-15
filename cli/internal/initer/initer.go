@@ -18,6 +18,7 @@ import (
 	"github.com/ur-wesley/fabrik/cli/internal/apps"
 	"github.com/ur-wesley/fabrik/cli/internal/deps"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/mcpconfig"
 	"github.com/ur-wesley/fabrik/cli/internal/repo"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
@@ -32,7 +33,7 @@ type Config struct {
 	DryRun     bool
 	// Full restores the legacy dump (one-release rollback). Default is thin.
 	Full bool
-	// Apps specifies which AI applications to configure (cursor, pi, antigravity, opencode).
+	// Apps specifies which AI applications to configure (cursor, pi, antigravity, gemini, opencode).
 	Apps []string
 	JSON   bool
 }
@@ -428,6 +429,12 @@ func initThin(out io.Writer, dry bool, abs string, subagents []string, selectedA
 				return err
 			}
 		}
+		if apps.Contains(selectedApps, apps.Gemini) {
+			agShim := antigravitySkillShim(s)
+			if err := writeMissing(out, dry, filepath.Join(abs, ".gemini", "skills", s, "SKILL.md"), agShim); err != nil {
+				return err
+			}
+		}
 	}
 	for _, a := range selectableAgents(subagents) {
 		shim := agentShim(a)
@@ -443,6 +450,11 @@ func initThin(out io.Writer, dry bool, abs string, subagents []string, selectedA
 		}
 		if apps.Contains(selectedApps, apps.Antigravity) {
 			if err := writeMissing(out, dry, filepath.Join(abs, ".agents", "agents", a+".md"), antigravityAgentFile(a, shim)); err != nil {
+				return err
+			}
+		}
+		if apps.Contains(selectedApps, apps.Gemini) {
+			if err := writeMissing(out, dry, filepath.Join(abs, ".gemini", "agents", a+".md"), antigravityAgentFile(a, shim)); err != nil {
 				return err
 			}
 		}
@@ -514,6 +526,11 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 			return err
 		}
 	}
+	if apps.Contains(selectedApps, apps.Gemini) {
+		if err := mkdir(out, dry, filepath.Join(abs, ".gemini", "skills")); err != nil {
+			return err
+		}
+	}
 
 	for _, s := range thinSkillNames() {
 		body, err := tmpl.Read("skills/" + s + ".md")
@@ -545,6 +562,12 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 				return err
 			}
 		}
+		if apps.Contains(selectedApps, apps.Gemini) {
+			wrapped := fmt.Sprintf("---\nname: %s\ndescription: Fabrik skill %s\n---\n\n%s", s, s, body)
+			if err := writeMissing(out, dry, filepath.Join(abs, ".gemini", "skills", s, "SKILL.md"), wrapped); err != nil {
+				return err
+			}
+		}
 	}
 
 	// 4. Subagents -> Pi + Cursor copies (OpenCode uses opencode.json show-shims)
@@ -560,6 +583,11 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 	}
 	if apps.Contains(selectedApps, apps.Antigravity) {
 		if err := mkdir(out, dry, filepath.Join(abs, ".agents", "agents")); err != nil {
+			return err
+		}
+	}
+	if apps.Contains(selectedApps, apps.Gemini) {
+		if err := mkdir(out, dry, filepath.Join(abs, ".gemini", "agents")); err != nil {
 			return err
 		}
 	}
@@ -589,6 +617,14 @@ func initFull(out io.Writer, dry bool, abs string, subagents []string, selectedA
 				}
 			}
 		}
+		if apps.Contains(selectedApps, apps.Gemini) {
+			gmPath := filepath.Join(abs, ".gemini", "agents", a+".md")
+			if !exists(gmPath) {
+				if err := write(out, dry, gmPath, antigravityAgentFile(a, src)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -603,7 +639,7 @@ func mkdir(out io.Writer, dry bool, dir string) error {
 		fmt.Fprintf(out, "dry-run: mkdir %s\n", dir)
 		return nil
 	}
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(dir, fileutil.DirPerm)
 }
 
 func copyMissing(out io.Writer, dry bool, template, dst string) error {
@@ -627,10 +663,10 @@ func write(out io.Writer, dry bool, dst, body string) error {
 		fmt.Fprintf(out, "dry-run: write %s\n", dst)
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), fileutil.DirPerm); err != nil {
 		return err
 	}
-	return os.WriteFile(dst, []byte(body), 0o644)
+	return os.WriteFile(dst, []byte(body), fileutil.ConfigPerm)
 }
 
 func appendFile(out io.Writer, dry bool, dst, body string) error {
@@ -638,7 +674,7 @@ func appendFile(out io.Writer, dry bool, dst, body string) error {
 		fmt.Fprintf(out, "dry-run: append %s\n", dst)
 		return nil
 	}
-	f, err := os.OpenFile(dst, os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(dst, os.O_APPEND|os.O_WRONLY, fileutil.ConfigPerm)
 	if err != nil {
 		return err
 	}

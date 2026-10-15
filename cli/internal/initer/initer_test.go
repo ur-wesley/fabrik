@@ -82,6 +82,7 @@ func TestInitThinDefault(t *testing.T) {
 			filepath.Join(".opencode", "skills", s+".md"),
 			filepath.Join(".pi", "skills", s+".md"),
 			filepath.Join(".agents", "skills", s, "SKILL.md"),
+			filepath.Join(".gemini", "skills", s, "SKILL.md"),
 		} {
 			full := filepath.Join(repo, p)
 			assert.FileExists(t, full, p)
@@ -108,6 +109,12 @@ func TestInitThinDefault(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(cursorBody), "name: "+a)
 		assert.Contains(t, string(cursorBody), "Run: fabrik show agent "+a)
+
+		geminiPath := filepath.Join(repo, ".gemini", "agents", a+".md")
+		assert.FileExists(t, geminiPath, a)
+		geminiBody, err := os.ReadFile(geminiPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(geminiBody), "Run: fabrik show agent "+a)
 	}
 	assert.NoFileExists(t, filepath.Join(repo, ".cursor", "agents", "cta.md"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor", "rules", "agents"))
@@ -121,6 +128,7 @@ func TestInitThinDefault(t *testing.T) {
 	assert.LessOrEqual(t, len(strings.Split(strings.TrimSpace(string(body)), "\n")), 8, "pointer AGENTS.md must stay short")
 
 	assert.DirExists(t, filepath.Join(repo, ".agents"))
+	assert.DirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoDirExists(t, filepath.Join(repo, ".claude"))
 	assert.NoDirExists(t, filepath.Join(repo, ".codex"))
 	assert.Contains(t, out.String(), "dolt ")
@@ -163,6 +171,7 @@ func TestInitFullLegacy(t *testing.T) {
 		assert.FileExists(t, filepath.Join(repo, ".opencode", "skills", s+".md"))
 		assert.FileExists(t, filepath.Join(repo, ".pi", "skills", s+".md"))
 		assert.FileExists(t, filepath.Join(repo, ".agents", "skills", s, "SKILL.md"))
+		assert.FileExists(t, filepath.Join(repo, ".gemini", "skills", s, "SKILL.md"))
 	}
 	// opencode.json replaces built-in build with Fabrik roster
 	assert.FileExists(t, filepath.Join(repo, "opencode.json"))
@@ -178,6 +187,7 @@ func TestInitFullLegacy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(cursorBuilder), "name: builder")
 	assert.Contains(t, string(cursorBuilder), "# Builder subagent")
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "agents", "builder.md"))
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor", "rules", "agents"))
 	// every pinned subagent lands in the hub
 	pins, err := deps.Load()
@@ -207,6 +217,7 @@ func TestInitSelectiveAppsCursorOnly(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
 	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
 	assert.NoDirExists(t, filepath.Join(repo, ".agents"))
+	assert.NoDirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
 
 }
@@ -222,6 +233,26 @@ func TestInitSelectiveAppsAntigravityOnly(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
 	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
 	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
+	assert.NoDirExists(t, filepath.Join(repo, ".gemini"))
+	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
+
+}
+
+func TestInitSelectiveAppsGeminiOnly(t *testing.T) {
+	repo := t.TempDir()
+	f := &exec.Fake{}
+	d, _ := testEnv(t, repo, f)
+	require.NoError(t, Init(context.Background(), Config{RepoPath: repo, Yes: true, Apps: []string{"gemini"}}, d))
+
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "skills", "tdd", "SKILL.md"))
+	assert.FileExists(t, filepath.Join(repo, ".gemini", "agents", "plan.md"))
+	geminiSkill, err := os.ReadFile(filepath.Join(repo, ".gemini", "skills", "tdd", "SKILL.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(geminiSkill), "Run: fabrik show skill tdd")
+	assert.NoDirExists(t, filepath.Join(repo, ".cursor"))
+	assert.NoDirExists(t, filepath.Join(repo, ".opencode"))
+	assert.NoDirExists(t, filepath.Join(repo, ".pi"))
+	assert.NoDirExists(t, filepath.Join(repo, ".agents"))
 	assert.NoFileExists(t, filepath.Join(repo, "opencode.json"))
 
 }

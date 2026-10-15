@@ -21,7 +21,7 @@ and registers the fabrik MCP server for Cursor, OpenCode, Pi, and Antigravity.`,
 		SilenceUsage: true,
 	}
 	root.SetVersionTemplate("fabrik {{.Version}}\n")
-	root.Flags().BoolP("version", "v", false, "print CLI version")
+	root.PersistentFlags().BoolP("version", "v", false, "print CLI version")
 	root.PersistentFlags().StringVarP(&repoDirFlag, "C", "C", "", "repo directory (default: walk up for .fabrik/dolt)")
 	root.AddCommand(newSetupCmd(), newInitCmd(), newResetCmd(), newCheckCmd(), newUpdateDepsCmd(), newVersionCmd(), newSelfUpdateCmd(), newShowCmd(), newListCmd(), newRunCmd(), newLoopCmd(), newMigrateCmd(), newListenCmd(), newMemCmd(), newIssueCmd(), newGraphCmd(), newMCPCmd(), newVcCmd(), newDoltCmd(), newHistoryCmd(), newExportCmd())
 	_ = ui.OK

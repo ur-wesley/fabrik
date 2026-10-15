@@ -2,21 +2,65 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // Home returns the user home directory.
 func Home() (string, error) { return os.UserHomeDir() }
 
-// BinDir is ~/.local/bin on all platforms (Windows included, like setup.ps1).
+// BinDir is ~/.local/bin on Unix. On Windows it is %APPDATA%\fabrik\bin
+// (a location users can add to PATH once), falling back to
+// %USERPROFILE%\.local\bin when APPDATA is unset.
 func BinDir() (string, error) {
+	if runtime.GOOS == "windows" {
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			return filepath.Join(appdata, "fabrik", "bin"), nil
+		}
+		h, err := Home()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(h, ".local", "bin"), nil
+	}
 	h, err := Home()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(h, ".local", "bin"), nil
+}
+
+// OnPATH reports whether dir is listed in the PATH environment variable
+// (case-insensitive on Windows, where PATH entries vary in case).
+func OnPATH(dir string) bool {
+	want := filepath.Clean(dir)
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p == "" {
+			continue
+		}
+		if runtime.GOOS == "windows" {
+			if strings.EqualFold(filepath.Clean(p), want) {
+				return true
+			}
+			continue
+		}
+		if filepath.Clean(p) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// WarnIfNotOnPATH returns a warning message when dir is not on PATH, or
+// "" when it is. Callers print it so users know to add BinDir to PATH.
+func WarnIfNotOnPATH(dir string) string {
+	if OnPATH(dir) {
+		return ""
+	}
+	return fmt.Sprintf("warning: %s is not on PATH; add it to use installed binaries", dir)
 }
 
 // GraphifySkills returns skill destinations for the specified apps (or all supported apps if empty).
@@ -48,6 +92,9 @@ func GraphifySkills(selectedApps ...string) ([]string, error) {
 	}
 	if match("antigravity") {
 		dests = append(dests, filepath.Join(h, ".gemini", "antigravity", "skills", "graphify", "SKILL.md"))
+	}
+	if match("gemini") {
+		dests = append(dests, filepath.Join(h, ".gemini", "skills", "graphify", "SKILL.md"))
 	}
 	return dests, nil
 }
