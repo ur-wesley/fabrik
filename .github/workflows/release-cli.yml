@@ -1,6 +1,6 @@
 # Release the fabrik Go CLI as binaries + npm/bun packages (no postinstall).
 #
-# Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + npm/*/package.json).
+# Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + cli/internal/version/package.json + gui/Cargo.toml + gui/Cargo.lock (neon) + npm/*/package.json).
 # Builds 5 targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
 # Version is stamped from package.json via ldflags.
 #

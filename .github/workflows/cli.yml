@@ -6,6 +6,9 @@ on:
       - "cli/**"
       - ".github/workflows/cli.yml"
       - "package.json"
+      - "cli/package.json"
+      - "cli/internal/version/package.json"
+      - "gui/**"
       - "npm/**"
       - "bin/**"
       - "scripts/sync-versions.mjs"
@@ -14,6 +17,9 @@ on:
       - "cli/**"
       - ".github/workflows/cli.yml"
       - "package.json"
+      - "cli/package.json"
+      - "cli/internal/version/package.json"
+      - "gui/**"
       - "npm/**"
       - "bin/**"
       - "scripts/sync-versions.mjs"
@@ -40,6 +46,13 @@ jobs:
         with:
           version: v2.1.6
           working-directory: cli
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: versions:check
+        run: node ../scripts/sync-versions.mjs --check
 
       - name: test
         env:

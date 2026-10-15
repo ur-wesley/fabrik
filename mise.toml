@@ -55,4 +55,4 @@ run_windows = "cd gui && set \"FABRIK_BIN={{config_root}}/cli/fabrik.exe\" && ca
 
 [tasks."release:check"]
 description = "Pre-release gate: versions:check + vet + build (mirrors release-cli.yml matrix)"
-depends = ["versions:check", "vet", "build"]
+depends = ["versions:check", "vet", "build", "gui:check"]
