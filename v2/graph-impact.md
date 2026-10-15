@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Blast radius: what breaks if this symbol changes — GitNexus `impact` / CodeGraph `codegraph_impact`. Walk **incoming** `calls` and `imports` edges up to depth N, grouped by depth.
+Blast radius: what breaks if this symbol changes. Walk **incoming** `calls` and `imports` edges up to depth N, grouped by depth.
 
 CLI: `fabrik graph impact <symbol> [--depth 3]`.
 

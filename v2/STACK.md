@@ -37,7 +37,7 @@ Override path with `FABRIK_MEMORY_DIR`. Migrations: `sqlmigrate/sql/memory/`.
 | --- | --- |
 | Stdio server | `github.com/modelcontextprotocol/go-sdk` |
 
-`fabrik mcp` subcommand. [setup.md](setup.md) registers it; removes Engram MCP entries.
+`fabrik mcp` subcommand. [setup.md](setup.md) registers it.
 
 ## Shell
 
@@ -56,8 +56,6 @@ Loopback SSE: [listen.md](listen.md). `net/http` in stdlib.
 
 | Library | Why not |
 | --- | --- |
-| Beads / `bd` (runtime) | v2 issues are native Dolt. |
-| Engram / Graphify binaries | Replaced by `fabrik mcp` + backends. |
 | Gorm, ent, sqlc | Raw SQL + sqlmigrate. |
 | `mark3labs/mcp-go` | Prefer official MCP Go SDK for new code. |
 

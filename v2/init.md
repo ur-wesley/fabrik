@@ -35,7 +35,7 @@ Create empty `.fabrik/graph.db` with **code graph** tables only when missing (no
 
 Also writes `.fabrik/config.yaml`, `docs/`, `specs/`, app shims, and gitignore lines for `.fabrik/dolt/`, `.fabrik/graph.db`, `.fabrik/export/`.
 
-Registers `fabrik mcp` for selected apps ([setup.md](setup.md)). Does not download `bd`, `engram`, or `graphify`. Does not create `~/.fabrik/memory.db` (that is [setup.md](setup.md) or first mem use).
+Registers `fabrik mcp` for selected apps ([setup.md](setup.md)). No network downloads. Does not create `~/.fabrik/memory.db` (that is [setup.md](setup.md) or first mem use).
 
 Schema version lives in Dolt `meta` table (v1 = `1`). Newer schema than the binary understands is an error.
 

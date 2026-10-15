@@ -6,7 +6,7 @@ Add one issue in status `open`. This is how landed work enters the queue after A
 
 ## Who calls it
 
-The planner agent, and a human landing a task by hand. bd-neon does not create issues in v1.
+The planner agent, a human landing a task by hand, and bd-neon via its v2-write-board `+ New` control.
 
 ## Invocation
 
@@ -82,4 +82,4 @@ fabrik issue create "Fix parser hang" --kind bug --priority 1 --json
 
 ## bd-neon
 
-No create control. A new issue shows up on the next refresh after some other client writes it.
+`+ New` in the toolbar opens a create control with title, body, acceptance, priority (0-4), and kind (task|bug|feature|epic|chore). It runs `fabrik issue create` with `--json`; the new issue shows up after the worker refresh.

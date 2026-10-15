@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Stdio MCP server that exposes issues, Engram-compatible memory, and a CodeGraph-class code index. Agents in Cursor, OpenCode, Pi, and Antigravity call tools here. They do not shell out to `fabrik issue` / `fabrik mem` / `fabrik graph` during normal work.
+Stdio MCP server that exposes issues, memory, and code index. Agents in Cursor, OpenCode, Pi, and Antigravity call tools here. They do not shell out to `fabrik issue` / `fabrik mem` / `fabrik graph` during normal work.
 
 Humans, bd-neon, and CI keep using the CLI.
 
@@ -14,7 +14,7 @@ fabrik mcp
 
 No flags in v1. Memory tools always work (open or create `~/.fabrik/memory.db`). Issue and graph tools walk upward from cwd until `.fabrik/dolt/` exists. If none, issue/graph tools error with `no store`; mem tools still register.
 
-Transport: MCP over stdio (same model as `engram mcp`).
+Transport: MCP over stdio.
 
 ## Registration
 
@@ -27,9 +27,7 @@ Transport: MCP over stdio (same model as `engram mcp`).
 | Pi | Pi MCP adapter entry pointing at `fabrik mcp` |
 | Antigravity | Antigravity MCP config |
 
-`fabrik setup` does **not** run `engram setup`, `bd setup`, or install Graphify skills for memory/graph.
-
-Remove legacy Engram entries when Fabrik MCP is added (same pass as today’s `engram setup`).
+Replace any existing fabrik entry for the same apps when present.
 
 ## Server instructions
 
@@ -63,7 +61,7 @@ All other tools below are **registered** and documented in server instructions b
 
 ## Full tool catalog
 
-### Memory (Engram names)
+### Memory
 
 See [mem-tools.md](mem-tools.md). Implemented tools call the same logic as CLI `fabrik mem …` where a CLI exists.
 
@@ -90,7 +88,7 @@ See [mem-tools.md](mem-tools.md). Implemented tools call the same logic as CLI `
 | `graph_detect_changes` | [graph-detect-changes.md](graph-detect-changes.md) |
 | `graph_path` | [graph-path.md](graph-path.md) |
 | `graph_explain` | [graph-explain.md](graph-explain.md) |
-| `graph_status` | Staleness + counts (like CodeGraph `codegraph_status`) |
+| `graph_status` | Staleness + counts |
 
 Optional `project_path` on graph tools: resolve repo root like `-C` (monorepo subfolder).
 

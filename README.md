@@ -93,3 +93,11 @@ See [PLAYBOOK.md](PLAYBOOK.md) for the full method.
 cd cli && go test ./...
 cd cli && go build ./cmd/fabrik
 ```
+
+Issue commands (`fabrik issue …`) talk to the embedded Dolt store
+(`.fabrik/dolt`) and need a `CGO_ENABLED=1` build plus a C toolchain:
+`npm run cli:build-cgo` (or `mise run cli:build-cgo`) fails fast with a
+`gcc missing` error when no compiler is on PATH (Windows: `winget install
+-e --id BrechtSanders.WinLibs.POSIX.UCRT`; releases build Windows via
+msys2 `mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu`). Graph commands
+(`fabrik graph …`) are pure Go (`modernc.org/sqlite`) and work without gcc.

@@ -6,11 +6,11 @@ Fabrik runs the agent loop: plan, land work, build, remember, map code. **Agents
 
 | What | Where | Sync |
 | --- | --- | --- |
-| **Memory** (sessions, observations) | `~/.fabrik/memory.db` on the **machine** | Local only (like Engram). Not `dolt push`. |
+| **Memory** (sessions, observations) | `~/.fabrik/memory.db` on the **machine** | Local only. Not `dolt push`. |
 | **Issues** | `.fabrik/dolt/` per **repo** | `fabrik dolt push` / `pull` |
 | **Code graph** | `.fabrik/graph.db` per **repo** | Rebuild locally |
 
-Opening another repo does **not** open another memory database. `mem_context` with no `project` shows recent work **across all repos** on this machine — same as Engram.
+Opening another repo does **not** open another memory database. `mem_context` with no `project` shows recent work **across all repos on this machine.**
 
 ## Who uses it
 

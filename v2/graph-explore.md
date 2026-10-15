@@ -2,7 +2,7 @@
 
 ## Purpose
 
-One call answers “how does X work”, “what calls Y”, or “what is near Z” — like CodeGraph `codegraph_explore`. Returns line-numbered source grouped by file, call paths between hits, blast-radius summary, and edge confidence (`extracted` | `inferred`).
+One call answers “how does X work”, “what calls Y”, or “what is near Z”. Returns line-numbered source grouped by file, call paths between hits, blast-radius summary, and edge confidence (`extracted` | `inferred`).
 
 Replaces ad-hoc `fabrik graph query` for agents. CLI alias: `fabrik graph explore <query>`.
 

@@ -12,6 +12,6 @@ fabrik mem search <query> --json
 fabrik mem get <id> --json
 ```
 
-When the board has a repo selected, UI may pass `--project <abs path>` on search only (user setting). Default context is machine-wide like Engram.
+When the board has a repo selected, UI may pass `--project <abs path>` on search only (user setting). Default context is machine-wide.
 
 When `~/.fabrik/listen.json` exists, subscribe to SSE topic `memory` and refetch. Fallback watcher: `~/.fabrik/memory.db` mtime.

@@ -2,7 +2,7 @@
 
 **Memory** on the machine (`~/.fabrik/memory.db`). **Issues** in embedded Dolt (`.fabrik/dolt/`). **Code graph** in SQLite (`.fabrik/graph.db`).
 
-**Agents** use **Fabrik MCP** (`fabrik mcp`): Engram-compatible `mem_*`, `issue_*`, and CodeGraph/GitNexus-class `graph_*`. **Humans** use bd-neon on CLI JSON.
+**Agents** use **Fabrik MCP** (`fabrik mcp`): `mem_*`, `issue_*`, and `graph_*`. **Humans** use bd-neon on CLI JSON.
 
 Spec only — code follows these files.
 
@@ -23,7 +23,7 @@ Spec only — code follows these files.
 
 ## Memory
 
-- [mem-tools.md](mem-tools.md) — Engram-compatible MCP tools (authoritative for agents)
+- [mem-tools.md](mem-tools.md) — MCP memory tools (authoritative for agents)
 - CLI mirrors: [mem-context.md](mem-context.md), [mem-search.md](mem-search.md), [mem-get.md](mem-get.md), [mem-save.md](mem-save.md), [mem-session-start.md](mem-session-start.md), [mem-session-summary.md](mem-session-summary.md), [mem-session-end.md](mem-session-end.md)
 
 ## Issues

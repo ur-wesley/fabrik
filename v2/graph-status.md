@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Index health: file count, symbol count, stale files (mtime mismatch), last build time. Like CodeGraph `codegraph_status`.
+Index health: file count, symbol count, stale files (mtime mismatch), last build time.
 
 CLI: `fabrik graph status [--json]`.
 

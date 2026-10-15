@@ -19,8 +19,6 @@ Deletes:
 - `.fabrik/export/`
 - app shims and gitignore lines this init added
 
-Does not delete `.beads/`.
-
 ## Text result
 
 ```text

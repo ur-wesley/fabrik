@@ -4,7 +4,7 @@
 
 Install Fabrik on the machine, create **machine memory** (`~/.fabrik/memory.db`), register **Fabrik MCP** for selected apps, then [init.md](init.md) the repo.
 
-Replaces `engram setup <app>` — memory tools come from Fabrik MCP, not Engram.
+Memory tools come from Fabrik MCP.
 
 ## Invocation
 
@@ -34,7 +34,7 @@ For each selected app, write a server entry:
 }
 ```
 
-Exact file shape follows each app’s MCP config format. Remove Engram server entries for the same apps when present.
+Exact file shape follows each app's MCP config format.
 
 Optional env:
 
@@ -44,7 +44,7 @@ Optional env:
 
 Runs `init` on `--repo` (default cwd). Creates `.fabrik/dolt/` and `.fabrik/graph.db`.
 
-Does not download `bd`, `engram`, or `graphify`.
+No network downloads.
 
 ## Text result
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Report repo store health and machine memory. Does not probe `bd`, `engram`, or `graphify`.
+Report repo store health and machine memory.
 
 ## Invocation
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Kanban over `fabrik issue`. Read-only for status changes.
+Kanban over `fabrik issue` with v2-write-board scope: create, claim, unclaim, close, dep, and note.
 
 ## What it runs
 
@@ -13,6 +13,19 @@ fabrik -C <repo> check --json
 fabrik -C <repo> issue list --json
 fabrik -C <repo> issue ready --json
 ```
+
+Writes (detail popup + `+ New` in the toolbar; all with `--json` via worker + toast + refresh):
+
+```text
+fabrik -C <repo> issue create "title" --body … --acceptance … --priority 0-4 --kind task|bug|feature|epic|chore --json
+fabrik -C <repo> issue claim <id> --by <name> --json
+fabrik -C <repo> issue unclaim <id> --by <name> --force --json
+fabrik -C <repo> issue close <id> --reason … --by <name> --force --json
+fabrik -C <repo> issue dep <blocked> <blocker> --kind blocks|relates --json
+fabrik -C <repo> issue note <id> <body> --json
+```
+
+`--by` names the actor; `--force` is a checkbox for unclaim/close.
 
 Detail and notes: [issue-show.md](issue-show.md), [issue-note.md](issue-note.md).
 

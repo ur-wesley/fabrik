@@ -20,7 +20,7 @@ No language flag and no path argument. The repo root is the store's directory.
 
 The filesystem under the repo root.
 
-Skipped directories, anywhere in the tree: `.git`, `.fabrik`, `vendor`, `node_modules`, `dist`, `build`, `target`, `graphify-out`.
+Skipped directories, anywhere in the tree: `.git`, `.fabrik`, `vendor`, `node_modules`, `dist`, `build`, `target`.
 
 Parsed files, by extension:
 

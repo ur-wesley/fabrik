@@ -1,10 +1,10 @@
-# Memory MCP tools (Engram-compatible)
+# Memory MCP tools
 
 ## Purpose
 
-Same tool **names** and **machine-wide** behaviour as [Engram](https://engram.gentlemanprogramming.com/reference/mcp-reference/): one database for the whole machine (`~/.fabrik/memory.db`), not per repo. Switching git repos does not switch memory.
+Machine-wide memory: one database for the whole machine (`~/.fabrik/memory.db`), not per repo. Switching git repos does not switch memory.
 
-Storage is SQLite + FTS5 in that file ([MEMORY.sql](MEMORY.sql)), like Engram’s `~/.engram/engram.db`. Issues and code graph stay in the repo ([STORE.md](STORE.md)).
+Storage is SQLite + FTS5 in that file ([MEMORY.sql](MEMORY.sql)). Issues and code graph stay in the repo ([STORE.md](STORE.md)).
 
 ## Protocol (agents)
 
@@ -31,7 +31,7 @@ Returns:
 
 - Latest session row (any project) or the open global session.
 - Newest `limit` observations **across all projects** when `project` omitted.
-- Footer stats: session count, observation count, **list of distinct `project` labels** (Engram-style).
+- Footer stats: session count, observation count, **list of distinct `project` labels**.
 
 ### mem_search
 
@@ -71,7 +71,7 @@ Machine totals + project list. No Dolt commit hash.
 
 ### mem_suggest_topic_key
 
-Unchanged from Engram intent.
+Suggests a stable `topic_key` for an evolving decision thread.
 
 ## graph_context linkage
 

@@ -57,7 +57,7 @@ One open session for the **whole machine** (`ended_at` null). `mem_session_start
 
 FTS lives **in `memory.db`** (`observations_fts`). Not in repo `graph.db`.
 
-### mem_context / mem_search scope (Engram parity)
+### mem_context / mem_search scope (machine-wide)
 
 | Call | Default scope |
 | --- | --- |

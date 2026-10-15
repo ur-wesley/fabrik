@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Map `git diff` (working tree or `HEAD`) onto symbols and execution-relevant files — GitNexus `detect_changes`. Answers “what should I retest after these edits?”
+Map `git diff` (working tree or `HEAD`) onto symbols and execution-relevant files. Answers “what should I retest after these edits?”
 
 CLI: `fabrik graph detect_changes [--ref HEAD]`.
 

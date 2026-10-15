@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Give an agent the recent **machine** session and the latest observations before it searches or greps. Default scope is **all projects** (Engram parity).
+Give an agent the recent **machine** session and the latest observations before it searches or greps. Default scope is **all projects** (machine-wide).
 
 ## Who calls it
 

@@ -34,11 +34,29 @@ Typing in the search box clears the path and selects nothing.
 
 ## What it shows
 
-- A node list: name, kind, `path:line`.
+- A graph canvas (egui_graphs force-directed `GraphView`): nodes and edges
+  from the cached overview or the latest explore result. Click selects,
+  right-click copies `path:line`. Zoom/pan, fit-to-screen, and reset sit
+  above the canvas with a legend. Empty input renders a hint, never blank.
+- A node list below the canvas: name, kind, `path:line`.
 - Under the selected node, its edges. Unresolved calls show the label and no target.
 - A path replaces the neighborhood until the next query. Nodes stay in walk order.
 
-The pane does not draw a free graph canvas in v1. It is a list.
+## Canvas
+
+- On Lookup enter (empty query) the canvas shows the instant overview:
+
+```text
+fabrik -C <repo> graph overview --budget 60 --json
+```
+
+  Degree-ordered symbols cached per repo; failures stay as a persistent
+  error card with **Retry overview** (same budget). An old CLI without
+  `graph overview` reports `unknown command "overview"`.
+
+- After a search, the canvas shows the explore result (`graph explore`
+  invocation above, fallback `graph query`). The node list stays as fallback
+  under the canvas; explain and path panels render below the list.
 
 ## Empty states
 

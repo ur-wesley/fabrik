@@ -2,7 +2,7 @@
 
 ## Purpose
 
-360° view of one symbol — GitNexus `context`: definition snippet, callers, callees, file, related tests (symbols in `*_test.go` or `*.test.ts` that reference the name), and observations from **machine** `memory.db` where `symbol_id` matches **and** `project` equals this repo’s absolute path.
+360° view of one symbol: definition snippet, callers, callees, file, related tests (symbols in `*_test.go` or `*.test.ts` that reference the name), and observations from **machine** `memory.db` where `symbol_id` matches **and** `project` equals this repo’s absolute path.
 
 CLI: `fabrik graph context <symbol_id|name>`.
 
