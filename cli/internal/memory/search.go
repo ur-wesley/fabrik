@@ -16,6 +16,10 @@ type SearchOptions struct {
 	Query   string
 	Limit   int
 	Project string
+	// AllProjects mirrors the mem_search all_projects argument
+	// (default true when Project is omitted). When Project is set,
+	// results narrow to that project regardless of this flag.
+	AllProjects bool
 }
 
 func Search(ctx context.Context, opt SearchOptions) ([]Observation, error) {

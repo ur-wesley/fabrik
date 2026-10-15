@@ -83,12 +83,17 @@ func newMemCheckCmd() *cobra.Command {
 
 func newMemContextCmd() *cobra.Command {
 	var asJSON bool
-	var project string
+	var project, scope string
 	cmd := &cobra.Command{
 		Use:   "context",
 		Short: "Load memory context for agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := memory.Context(cmd.Context(), memory.ContextOptions{Project: project})
+			switch scope {
+			case "", "project", "personal":
+			default:
+				return clierr.Usage("fabrik: --scope must be project|personal")
+			}
+			r, err := memory.Context(cmd.Context(), memory.ContextOptions{Project: project, Scope: scope})
 			if err != nil {
 				return err
 			}
@@ -101,6 +106,7 @@ func newMemContextCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable output")
 	cmd.Flags().StringVar(&project, "project", "", "filter observations to this repo path label")
+	cmd.Flags().StringVar(&scope, "scope", "", "project|personal (v1: same table, personal reserved)")
 	return cmd
 }
 
@@ -108,13 +114,14 @@ func newMemSearchCmd() *cobra.Command {
 	var asJSON bool
 	var limit int
 	var project string
+	var allProjects bool
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Search observations",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
 			obs, err := memory.Search(cmd.Context(), memory.SearchOptions{
-				Query: query, Limit: limit, Project: project,
+				Query: query, Limit: limit, Project: project, AllProjects: allProjects,
 			})
 			if err != nil {
 				return err
@@ -129,6 +136,7 @@ func newMemSearchCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable output")
 	cmd.Flags().IntVar(&limit, "limit", 20, "max results (1-100)")
 	cmd.Flags().StringVar(&project, "project", "", "filter observations to this repo path label")
+	cmd.Flags().BoolVar(&allProjects, "all-projects", true, "search all projects when --project is omitted")
 	return cmd
 }
 
@@ -247,6 +255,9 @@ func newMemSessionSummaryCmd() *cobra.Command {
 			if cmd.Flags().Changed("files") {
 				opt.FilesSet = true
 				opt.Files = files
+			}
+			if !cmd.Flags().Changed("goal") && !cmd.Flags().Changed("discoveries") && !cmd.Flags().Changed("accomplished") && !cmd.Flags().Changed("next") && !cmd.Flags().Changed("files") {
+				return clierr.Usage("fabrik: session summary needs at least one of --goal/--discoveries/--accomplished/--next/--files")
 			}
 			s, err := memory.SessionSummary(cmd.Context(), opt)
 			if err != nil {

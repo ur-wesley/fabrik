@@ -20,6 +20,10 @@ type ContextOptions struct {
 	AgentDefault bool
 	Cwd          string
 	Actor        string
+	// Scope mirrors the mem_context scope argument (project|personal).
+	// v1: both scopes read the same table; personal is reserved.
+	// Accepted for spec compatibility; filtering is unchanged.
+	Scope string
 }
 
 func Context(ctx context.Context, opt ContextOptions) (ContextResult, error) {
