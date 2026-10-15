@@ -81,4 +81,5 @@ formatters:
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/ur-wesley/fabrik
+      local-prefixes:
+        - github.com/ur-wesley/fabrik
