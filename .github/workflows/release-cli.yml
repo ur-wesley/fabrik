@@ -25,11 +25,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
-          - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
-          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
-          - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
-          - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
+          - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe, shell: 'msys2 {0}' }
+          - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik, shell: 'bash' }
+          - { runner: ubuntu-latest, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik, shell: 'bash' }
+          - { runner: macos-14, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik, shell: 'bash' }
+          - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik, shell: 'bash' }
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -76,7 +76,7 @@ jobs:
           install: mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu
 
       - name: test
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: ${{ matrix.shell }}
         env:
           CGO_ENABLED: "1"
           CGO_CPPFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/icu4c/include -I/usr/local/opt/icu4c/include' || '' }}
@@ -84,7 +84,7 @@ jobs:
         run: go test ./...
 
       - name: build
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: ${{ matrix.shell }}
         env:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
