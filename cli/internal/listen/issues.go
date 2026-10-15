@@ -138,7 +138,7 @@ func validateRepo(repo string) (string, error) {
 	if repo == "" {
 		return "", &APIError{Status: http.StatusBadRequest, Msg: "bad request"}
 	}
-	if !filepath.IsAbs(repo) {
+	if !filepath.IsAbs(repo) && !strings.HasPrefix(repo, "/") {
 		return "", &APIError{Status: http.StatusBadRequest, Msg: "bad request"}
 	}
 	return filepath.Clean(repo), nil

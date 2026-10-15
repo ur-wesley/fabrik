@@ -26,9 +26,19 @@ func (h *hub) unsubscribe(ch chan Event) {
 }
 
 func (h *hub) broadcast(e Event) {
+	// Non-blocking fan-out: snapshot subs under the lock, then send without
+	// holding it. A slow subscriber with a full buffer (cap 64) is skipped
+	// instead of stalling every other subscriber and the notifier.
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	subs := make([]chan Event, 0, len(h.subs))
 	for ch := range h.subs {
-		ch <- e
+		subs = append(subs, ch)
+	}
+	h.mu.Unlock()
+	for _, ch := range subs {
+		select {
+		case ch <- e:
+		default:
+		}
 	}
 }

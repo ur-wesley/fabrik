@@ -16,6 +16,7 @@ import (
 
 func newListenCmd() *cobra.Command {
 	var addr string
+	var jsonOnly bool
 	cmd := &cobra.Command{
 		Use:   "listen",
 		Short: "Loopback SSE for local GUI refresh",
@@ -59,5 +60,7 @@ func newListenCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:0", "loopback listen address")
+	cmd.Flags().BoolVar(&jsonOnly, "json", false, "machine-readable output (print config JSON only)")
+	_ = jsonOnly // same single JSON line is printed either way; flag exists for spec compat, no extra human text is printed
 	return cmd
 }

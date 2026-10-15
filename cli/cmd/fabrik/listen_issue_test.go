@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -17,12 +18,10 @@ import (
 )
 
 func TestIssueNote(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+	skipWithoutCGO(t)
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 
 	out, err := run(t, "issue", "create", "Note target", "--json")
 	require.NoError(t, err)
@@ -49,14 +48,12 @@ func TestIssueNote(t *testing.T) {
 }
 
 func TestListenNoteHTTPNotifiesSSE(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+	skipWithoutCGO(t)
 	dir := t.TempDir()
 	abs, err := filepath.Abs(dir)
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Join(abs, ".fabrik", "dolt"), 0o755))
-	require.NoError(t, os.Chdir(abs))
+	t.Chdir(abs)
 
 	out, err := run(t, "issue", "create", "HTTP note", "--json")
 	require.NoError(t, err)
@@ -98,8 +95,9 @@ func TestListenNoteHTTPNotifiesSSE(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	noteURL := strings.TrimSuffix(cfg.URL, "/events") + "/note"
-	body := `{"repo":"` + abs + `","id":"` + issueID + `","body":"via http"}`
-	post, err := http.NewRequest(http.MethodPost, noteURL, strings.NewReader(body))
+	m, err := json.Marshal(map[string]string{"repo": abs, "id": issueID, "body": "via http"})
+	require.NoError(t, err)
+	post, err := http.NewRequest(http.MethodPost, noteURL, bytes.NewReader(m))
 	require.NoError(t, err)
 	post.Header.Set("Authorization", "Bearer "+cfg.Token)
 	post.Header.Set("Content-Type", "application/json")

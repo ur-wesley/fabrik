@@ -11,19 +11,34 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 )
 
 var ErrAlreadyRunning = errors.New("fabrik: listen already running")
+
+// activeConfigs tracks live servers in this process by config path, guarded
+// by activeMu. NewServer holds activeMu for its whole check-and-register
+// sequence so two in-process starters cannot both claim the same path, and
+// Close unregisters. Cross-process races are handled by the atomic
+// temp+rename writeConfig and the token-gated removeOwnConfig.
+var (
+	activeMu      sync.Mutex
+	activeConfigs = make(map[string]*Server)
+)
 
 type Server struct {
 	token      string
 	eventsURL  string
 	notifyURL  string
 	configPath string
+	lockPath   string
+	lockFile   *os.File
 	hub        *hub
 	issues     IssueAPI
 	http       *http.Server
@@ -31,41 +46,69 @@ type Server struct {
 	ln         net.Listener
 }
 
+// NewServer starts a loopback-only listener and publishes its config atomically.
+//
+// Dual-:0 race: two starters binding ":0" each get a distinct ephemeral port,
+// so the TCP bind cannot serialize them — without extra coordination both
+// would listen and the loser's writeConfig would orphan the winner's config.
+// claimListenLock closes that hole with a best-effort O_EXCL sidecar lock
+// (<configPath>.lock) held open for the server's lifetime; stale locks from
+// dead owners are removed and re-claimed.
 func NewServer(bindAddr, configPath string, issues IssueAPI) (*Server, error) {
+	activeMu.Lock()
+	defer activeMu.Unlock()
+	if _, ok := activeConfigs[configPath]; ok {
+		return nil, ErrAlreadyRunning
+	}
+	lockFile, err := claimListenLock(configPath)
+	if err != nil {
+		return nil, err
+	}
+	releaseOnErr := func() { releaseListenLock(lockFile, lockPathFor(configPath)) }
+	// No Remove here: a stale config is replaced atomically by writeConfig
+	// (temp file + rename). Removing first would open a TOCTOU window where
+	// a concurrent starter/closer observes a missing config.
 	if _, err := os.Stat(configPath); err == nil {
 		if existingListenBusy(configPath) {
+			releaseOnErr()
 			return nil, ErrAlreadyRunning
 		}
-		_ = os.Remove(configPath)
 	} else if !os.IsNotExist(err) {
+		releaseOnErr()
 		return nil, err
 	}
 
 	host, port, err := net.SplitHostPort(bindAddr)
 	if err != nil {
+		releaseOnErr()
 		return nil, err
 	}
 	if !isLoopbackHost(host) {
+		releaseOnErr()
 		return nil, fmt.Errorf("fabrik listen: remote bind refused (use 127.0.0.1)")
 	}
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(host, port))
 	if err != nil {
+		releaseOnErr()
 		return nil, err
 	}
 	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
 	if !ok {
 		ln.Close()
+		releaseOnErr()
 		return nil, fmt.Errorf("fabrik listen: unexpected listener address")
 	}
 	if !tcpAddr.IP.IsLoopback() {
 		ln.Close()
+		releaseOnErr()
 		return nil, fmt.Errorf("fabrik listen: remote bind refused")
 	}
 
 	token, err := randomToken()
 	if err != nil {
 		ln.Close()
+		releaseOnErr()
 		return nil, err
 	}
 
@@ -75,6 +118,8 @@ func NewServer(bindAddr, configPath string, issues IssueAPI) (*Server, error) {
 		eventsURL:  base + "/events",
 		notifyURL:  base + "/notify",
 		configPath: configPath,
+		lockPath:   lockPathFor(configPath),
+		lockFile:   lockFile,
 		hub:        newHub(),
 		issues:     issues,
 		ln:         ln,
@@ -83,8 +128,10 @@ func NewServer(bindAddr, configPath string, issues IssueAPI) (*Server, error) {
 
 	if err := s.writeConfig(); err != nil {
 		ln.Close()
+		releaseOnErr()
 		return nil, err
 	}
+	activeConfigs[configPath] = s
 	return s, nil
 }
 
@@ -97,14 +144,42 @@ func (s *Server) Serve() error {
 }
 
 func (s *Server) Close() error {
+	activeMu.Lock()
+	if cur, ok := activeConfigs[s.configPath]; ok && cur == s {
+		delete(activeConfigs, s.configPath)
+	}
+	activeMu.Unlock()
 	var err error
 	s.mu.Lock()
 	if s.http != nil {
 		err = s.http.Close()
 	}
 	s.mu.Unlock()
-	_ = os.Remove(s.configPath)
+	s.removeOwnConfig()
+	releaseListenLock(s.lockFile, s.lockPath)
 	return err
+}
+
+// removeOwnConfig deletes the config file only if it still belongs to this
+// server (token match) and was written by this process. A stale Close (e.g.
+// deferred after a successor took over the path) must not delete the
+// successor's config.
+func (s *Server) removeOwnConfig() {
+	data, err := os.ReadFile(s.configPath)
+	if err != nil {
+		return
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return
+	}
+	if cfg.Token == "" || cfg.Token != s.token {
+		return
+	}
+	if cfg.PID != 0 && cfg.PID != os.Getpid() {
+		return
+	}
+	_ = os.Remove(s.configPath)
 }
 
 func (s *Server) Notify(e Event) {
@@ -183,7 +258,7 @@ func (s *Server) handleNotify(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeConfig() error {
-	if err := os.MkdirAll(dirOf(s.configPath), 0o755); err != nil {
+	if err := os.MkdirAll(dirOf(s.configPath), fileutil.DirPerm); err != nil {
 		return err
 	}
 	cfg := s.Config()
@@ -192,15 +267,95 @@ func (s *Server) writeConfig() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.configPath, b, 0o600)
+	// Atomic replacement: temp file created with O_EXCL (CreateTemp) in the
+	// same directory, then renamed over the target. Readers always see a
+	// complete config; no Stat/Remove/Write TOCTOU window.
+	tmp, err := os.CreateTemp(dirOf(s.configPath), ".listen-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(fileutil.SecretPerm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, s.configPath)
 }
 
 func dirOf(path string) string {
-	i := strings.LastIndex(path, string(os.PathSeparator))
-	if i < 0 {
-		return "."
+	// filepath.Clean first so mixed separators ("a/b\c") resolve to the real
+	// parent on every OS; filepath.Dir alone only splits on the native one.
+	return filepath.Dir(filepath.Clean(path))
+}
+
+// lockPathFor returns the sidecar claim file identifying the live owner of
+// configPath (see NewServer).
+func lockPathFor(configPath string) string {
+	return configPath + ".lock"
+}
+
+// claimListenLock atomically claims the config path for this process via an
+// O_EXCL-created lock file holding our PID, kept open by the caller for the
+// server's lifetime. A pre-existing lock owned by a live process (or serving
+// URL) yields ErrAlreadyRunning; a stale lock (dead owner, nothing serving)
+// is removed and claimed once. Best-effort caveat: a recycled PID matching a
+// stale lock fails closed with ErrAlreadyRunning until that PID exits or the
+// .lock file is removed manually.
+func claimListenLock(configPath string) (*os.File, error) {
+	lockPath := lockPathFor(configPath)
+	if err := os.MkdirAll(dirOf(lockPath), fileutil.DirPerm); err != nil {
+		return nil, err
 	}
-	return path[:i]
+	if f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileutil.SecretPerm); err == nil {
+		_, _ = fmt.Fprintf(f, "%d", os.Getpid())
+		return f, nil
+	} else if !os.IsExist(err) {
+		return nil, err
+	}
+	if pid := readLockPID(lockPath); pid > 0 && !processAlive(pid) && !existingListenBusy(configPath) {
+		if err := os.Remove(lockPath); err == nil {
+			if f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileutil.SecretPerm); err == nil {
+				_, _ = fmt.Fprintf(f, "%d", os.Getpid())
+				return f, nil
+			}
+		}
+	}
+	return nil, ErrAlreadyRunning
+}
+
+// releaseListenLock drops our claim. The PID check keeps a stale Close from
+// deleting a successor's lock after a stale-lock takeover.
+func releaseListenLock(f *os.File, lockPath string) {
+	if f == nil {
+		return
+	}
+	_ = f.Close()
+	if lockPath == "" {
+		return
+	}
+	if pid := readLockPID(lockPath); pid == os.Getpid() {
+		_ = os.Remove(lockPath)
+	}
+}
+
+func readLockPID(lockPath string) int {
+	raw, err := os.ReadFile(lockPath)
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	return pid
 }
 
 func randomToken() (string, error) {
@@ -237,9 +392,25 @@ func existingListenBusy(configPath string) bool {
 	if err := json.Unmarshal(data, &cfg); err != nil || cfg.URL == "" {
 		return false
 	}
-	if cfg.PID > 0 && processAlive(cfg.PID) {
+	// The HTTP probe is authoritative: only the live owner of this config
+	// answers on its loopback URL. A bare processAlive(PID) check is NOT
+	// sufficient — PIDs are recycled, so Kill-0/FindProcess can succeed for
+	// an unrelated successor process (false "busy").
+	if probeListenURL(cfg) {
 		return true
 	}
+	// HTTP unreachable but PID alive: the owner may be in its startup window
+	// (config written, Serve not yet accepting). Re-probe once after a short
+	// delay; a recycled PID never serves this URL, so a second miss means
+	// the config is stale.
+	if cfg.PID > 0 && processAlive(cfg.PID) {
+		time.Sleep(150 * time.Millisecond)
+		return probeListenURL(cfg)
+	}
+	return false
+}
+
+func probeListenURL(cfg Config) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.URL, nil)
@@ -255,13 +426,6 @@ func existingListenBusy(configPath string) bool {
 	}
 	_ = resp.Body.Close()
 	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusUnauthorized
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
 }
 
 func bearerOK(r *http.Request, token string) bool {
