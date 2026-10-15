@@ -15,5 +15,8 @@
   ],
   "files": [
     "bin/fabrik.exe"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

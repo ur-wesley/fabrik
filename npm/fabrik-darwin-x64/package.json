@@ -15,5 +15,8 @@
   ],
   "files": [
     "bin/fabrik"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

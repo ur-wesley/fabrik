@@ -21,6 +21,7 @@ tsconfig.tsbuildinfo
 npm/*/bin/fabrik
 npm/*/bin/fabrik.exe
 npm/*/bin/*.sha256
+npm/*/bin/*.dll
 *.tgz
 
 # Beads / Dolt files (added by bd init)

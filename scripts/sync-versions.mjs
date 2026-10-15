@@ -2,7 +2,7 @@
 // Mirrors into cli/package.json (Go ldflags version), cli/internal/version/package.json
 // (embedded fallback), gui/Cargo.toml + gui/Cargo.lock (neon package), and all npm
 // platform packages (including root optionalDependencies ranges).
-// Usage: node scripts/sync-versions.mjs [--check] [--set X.Y.Z]
+// Usage: node scripts/sync-versions.mjs [--check] [--set X.Y.Z] [--print-version]
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +53,7 @@ function readGuiLockNeonVersion(lockPath) {
 function main() {
   const args = process.argv.slice(2);
   const check = args.includes("--check");
+  const printVersion = args.includes("--print-version");
   const setIdx = args.indexOf("--set");
   const setVersion = setIdx !== -1 ? args[setIdx + 1] : null;
   if (setIdx !== -1 && !setVersion) {
@@ -62,6 +63,10 @@ function main() {
 
   const rootPkg = readJson(rootPkgPath);
   const sourceVersion = setVersion || rootPkg.version;
+  if (printVersion) {
+    console.log(sourceVersion);
+    return;
+  }
   if (!/^\d+\.\d+\.\d+(-.+)?$/.test(sourceVersion)) {
     console.error(`sync-versions: invalid version ${sourceVersion}`);
     process.exit(1);
@@ -93,10 +98,16 @@ function main() {
       updates.push(`root optionalDependencies[${key}]`);
     }
   }
-  for (const field of ["postinstall", "install", "preinstall", "preprepare"]) {
+  const LIFECYCLE_FIELDS = ["postinstall", "install", "preinstall", "preprepare"];
+  for (const field of LIFECYCLE_FIELDS) {
     if (rootPkg.scripts && rootPkg.scripts[field]) {
       problems.push(`root scripts.${field} must not exist (no postinstall allowed)`);
     }
+  }
+  if (!rootPkg.publishConfig || rootPkg.publishConfig.access !== "public") {
+    problems.push(`root: publishConfig.access must be "public"`);
+    rootPkg.publishConfig = { access: "public" };
+    updates.push("root publishConfig");
   }
 
   const cliPkg = readJson(cliPkgPath);
@@ -110,6 +121,25 @@ function main() {
     return { label: `npm/${plat}/package.json`, path: p, pkg: readJson(p) };
   });
   for (const { label, pkg } of platPkgs) ensureVersion(label, pkg);
+  for (const { label, pkg } of platPkgs) {
+    for (const field of LIFECYCLE_FIELDS) {
+      if (pkg.scripts && pkg.scripts[field]) {
+        problems.push(`${label}: scripts.${field} must not exist (no lifecycle on platform pkgs)`);
+        delete pkg.scripts[field];
+        updates.push(`${label} scripts.${field}`);
+      }
+    }
+    if (pkg.private) {
+      problems.push(`${label}: private must not be set (platform pkgs are published)`);
+      delete pkg.private;
+      updates.push(`${label} private`);
+    }
+    if (!pkg.publishConfig || pkg.publishConfig.access !== "public") {
+      problems.push(`${label}: publishConfig.access must be "public"`);
+      pkg.publishConfig = { access: "public" };
+      updates.push(`${label} publishConfig`);
+    }
+  }
 
   const guiCargo = readGuiCargoVersion(guiCargoTomlPath);
   let guiCargoText = guiCargo.text;

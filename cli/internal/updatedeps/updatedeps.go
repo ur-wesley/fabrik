@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
+	"github.com/ur-wesley/fabrik/cli/internal/platform"
 	"github.com/ur-wesley/fabrik/cli/internal/ui"
 )
 
@@ -118,12 +120,11 @@ type ToolPin struct {
 	GoModule string            `json:"goModule,omitempty"`
 }
 
+// assetName is the canonical dep archive name for tool/ver/key (platform
+// package): the single impl for third-party tool archives, so dep naming
+// cannot drift from the self-update/platform tables.
 func assetName(tool, ver, key string) string {
-	ext := ".tar.gz"
-	if strings.HasPrefix(key, "windows") {
-		ext = ".zip"
-	}
-	return fmt.Sprintf("%s_%s_%s%s", tool, ver, key, ext)
+	return platform.DepAssetName(tool, ver, key)
 }
 
 // Refresh resolves latest pins and rewrites depsPath (JSON shape preserved generically).
@@ -152,7 +153,8 @@ func Refresh(ctx context.Context, out io.Writer, f *Fetcher, depsPath string, ye
 	beadsVer := strings.TrimPrefix(beadsTag, "v")
 	engramVer := strings.TrimPrefix(engramTag, "v")
 
-	keys := []string{"windows_amd64", "windows_arm64", "linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"}
+	// Third-party dep archives ship all six supported variants (see platform).
+	keys := platform.AllKeys
 
 	fmt.Fprintf(out, "Latest pins:\n  beads    %s\n  engram   %s\n  graphify %s\n", beadsTag, engramTag, graphifyVer)
 	if !ui.Confirm(fmt.Sprintf("Write pins to %s?", depsPath), yes) {
@@ -179,7 +181,7 @@ func Refresh(ctx context.Context, out io.Writer, f *Fetcher, depsPath string, ye
 		return err
 	}
 	out2 = append(out2, '\n')
-	if err := os.WriteFile(depsPath, out2, 0o644); err != nil {
+	if err := os.WriteFile(depsPath, out2, fileutil.ConfigPerm); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "Updated deps.json:\n  beads    %s\n  engram   %s\n  graphify %s\n", beadsTag, engramTag, graphifyVer)

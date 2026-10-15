@@ -37,7 +37,7 @@
   "pi": {
     "mcpAdapter": "npm:@piarium/pi-mcp-adapter"
   },
-  "agents": ["cursor", "opencode", "pi", "antigravity"],
+  "agents": ["cursor", "pi", "antigravity", "gemini", "opencode"],
   "skills": [
     "i-have-adhd",
     "ponytail",

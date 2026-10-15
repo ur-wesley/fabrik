@@ -5,10 +5,18 @@ on:
     paths:
       - "cli/**"
       - ".github/workflows/cli.yml"
+      - "package.json"
+      - "npm/**"
+      - "bin/**"
+      - "scripts/sync-versions.mjs"
   pull_request:
     paths:
       - "cli/**"
       - ".github/workflows/cli.yml"
+      - "package.json"
+      - "npm/**"
+      - "bin/**"
+      - "scripts/sync-versions.mjs"
 
 jobs:
   lint-test:
@@ -37,3 +45,13 @@ jobs:
         env:
           CGO_ENABLED: "1"
         run: go test ./...
+
+      - name: vet
+        env:
+          CGO_ENABLED: "1"
+        run: go vet ./...
+
+      - name: build
+        env:
+          CGO_ENABLED: "1"
+        run: go build -o /dev/null ./...
