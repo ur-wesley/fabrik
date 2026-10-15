@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y libicu-dev build-essential
-          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu; fi
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then sudo dpkg --add-architecture arm64; sudo apt-get update; sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libicu-dev:arm64; fi
 
       - name: install build deps (macos)
         if: runner.os == 'macOS'
