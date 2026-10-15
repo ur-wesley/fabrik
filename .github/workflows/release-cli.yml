@@ -109,7 +109,7 @@ jobs:
           go build -trimpath \
             -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
             -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
-          sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; else shasum -a 256 "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; fi
           mkdir -p "../npm/${{ matrix.npmDir }}/bin"
           cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
           chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
@@ -128,7 +128,7 @@ jobs:
           go build -trimpath \
             -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
             -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
-          sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; else shasum -a 256 "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; fi
           mkdir -p "../npm/${{ matrix.npmDir }}/bin"
           cp "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
           chmod +x "../npm/${{ matrix.npmDir }}/bin/${{ matrix.npmBin }}"
