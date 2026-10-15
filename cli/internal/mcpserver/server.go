@@ -25,7 +25,7 @@ func NewServer() *mcp.Server {
 
 func Run(ctx context.Context) error {
 	memory.EnableSharedPool(true)
-	return NewServer().Run(ctx, &mcp.StdioTransport{})
+	return runStdio(ctx, NewServer(), os.Stdin, os.Stdout)
 }
 
 func EnabledToolNames() []string {
@@ -72,10 +72,8 @@ var defaultTools = []string{
 }
 
 var extraTools = []string{
-	"mem_get_observation",
 	"mem_session_start",
 	"mem_session_end",
-	"mem_current_project",
 	"mem_stats",
 	"mem_update",
 	"mem_delete",

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -13,12 +14,14 @@ import (
 type memContextIn struct {
 	Project *string `json:"project,omitempty"`
 	Limit   *int    `json:"limit,omitempty"`
+	Scope   *string `json:"scope,omitempty"`
 }
 
 type memSearchIn struct {
-	Query   string  `json:"query"`
-	Limit   *int    `json:"limit,omitempty"`
-	Project *string `json:"project,omitempty"`
+	Query       string  `json:"query"`
+	Limit       *int    `json:"limit,omitempty"`
+	Project     *string `json:"project,omitempty"`
+	AllProjects *bool   `json:"all_projects,omitempty"`
 }
 
 type memSaveIn struct {
@@ -130,6 +133,20 @@ type issueReadyIn struct {
 	ProjectPath *string `json:"project_path,omitempty"`
 }
 
+// issueSlimListOut wraps slice results so the MCP outputSchema is
+// type object (strict clients reject top-level array output schemas).
+type issueSlimListOut struct {
+	Issues []doltstore.IssueSlim `json:"issues"`
+	Count  int                   `json:"count"`
+}
+
+// memSearchOut wraps slice results so the MCP outputSchema is
+// type object (strict clients reject top-level array output schemas).
+type memSearchOut struct {
+	Observations []memory.Observation `json:"observations"`
+	Count        int                  `json:"count"`
+}
+
 type issueCreateIn struct {
 	Title       string  `json:"title"`
 	Body        *string `json:"body,omitempty"`
@@ -168,8 +185,14 @@ func intVal(p *int) int {
 
 func handleMemContext(ctx context.Context, req *mcp.CallToolRequest, in memContextIn) (*mcp.CallToolResult, memory.ContextResult, error) {
 	wd, _ := os.Getwd()
+	scope := strVal(in.Scope)
+	switch scope {
+	case "", "project", "personal":
+	default:
+		return nil, memory.ContextResult{}, fmt.Errorf("fabrik: scope must be project|personal")
+	}
 	r, err := memory.Context(ctx, memory.ContextOptions{
-		Project: strVal(in.Project), Limit: intVal(in.Limit),
+		Project: strVal(in.Project), Limit: intVal(in.Limit), Scope: scope,
 		AgentDefault: strVal(in.Project) == "", Cwd: wd, Actor: actorFrom(req),
 	})
 	if err != nil {
@@ -178,17 +201,22 @@ func handleMemContext(ctx context.Context, req *mcp.CallToolRequest, in memConte
 	return nil, r, nil
 }
 
-func handleMemSearch(ctx context.Context, _ *mcp.CallToolRequest, in memSearchIn) (*mcp.CallToolResult, []memory.Observation, error) {
+func handleMemSearch(ctx context.Context, _ *mcp.CallToolRequest, in memSearchIn) (*mcp.CallToolResult, memSearchOut, error) {
+	allProjects := true
+	if in.AllProjects != nil {
+		allProjects = *in.AllProjects
+	}
 	obs, err := memory.Search(ctx, memory.SearchOptions{
 		Query: in.Query, Limit: intVal(in.Limit), Project: strVal(in.Project),
+		AllProjects: allProjects,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, memSearchOut{}, err
 	}
 	if obs == nil {
 		obs = []memory.Observation{}
 	}
-	return nil, obs, nil
+	return nil, memSearchOut{Observations: obs, Count: len(obs)}, nil
 }
 
 func handleMemSave(ctx context.Context, _ *mcp.CallToolRequest, in memSaveIn) (*mcp.CallToolResult, memory.Observation, error) {
@@ -226,6 +254,9 @@ func handleMemSessionSummary(ctx context.Context, req *mcp.CallToolRequest, in m
 	if in.Files != nil {
 		opt.FilesSet = true
 		opt.Files = *in.Files
+	}
+	if strVal(in.Goal) == "" && strVal(in.Discoveries) == "" && strVal(in.Accomplished) == "" && strVal(in.NextSteps) == "" && strVal(in.Files) == "" {
+		return nil, memory.Session{}, fmt.Errorf("fabrik: session summary needs at least one of --goal/--discoveries/--accomplished/--next/--files")
 	}
 	s, err := memory.SessionSummary(ctx, opt)
 	if err != nil {
@@ -334,20 +365,21 @@ func handleMemSuggestTopicKey(_ context.Context, _ *mcp.CallToolRequest, in memS
 	return nil, map[string]string{"topic_key": key}, nil
 }
 
-func handleIssueReady(ctx context.Context, _ *mcp.CallToolRequest, in issueReadyIn) (*mcp.CallToolResult, []doltstore.IssueSlim, error) {
+func handleIssueReady(ctx context.Context, _ *mcp.CallToolRequest, in issueReadyIn) (*mcp.CallToolResult, issueSlimListOut, error) {
 	st, err := openIssueStore(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, issueSlimListOut{}, err
 	}
 	defer st.Close()
 	issues, err := st.Ready(ctx)
 	if err != nil {
-		return nil, nil, mapStoreErr(err)
+		return nil, issueSlimListOut{}, mapStoreErr(err)
 	}
 	if issues == nil {
-		return nil, []doltstore.IssueSlim{}, nil
+		return nil, issueSlimListOut{Issues: []doltstore.IssueSlim{}}, nil
 	}
-	return nil, doltstore.SlimIssues(issues), nil
+	slim := doltstore.SlimIssues(issues)
+	return nil, issueSlimListOut{Issues: slim, Count: len(slim)}, nil
 }
 
 func handleIssueShow(ctx context.Context, _ *mcp.CallToolRequest, in issueShowIn) (*mcp.CallToolResult, doltstore.Issue, error) {
@@ -400,20 +432,21 @@ func handleIssueClose(ctx context.Context, req *mcp.CallToolRequest, in issueClo
 	return nil, res.Issue, nil
 }
 
-func handleIssueList(ctx context.Context, _ *mcp.CallToolRequest, in issueListIn) (*mcp.CallToolResult, []doltstore.IssueSlim, error) {
+func handleIssueList(ctx context.Context, _ *mcp.CallToolRequest, in issueListIn) (*mcp.CallToolResult, issueSlimListOut, error) {
 	st, err := openIssueStore(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, issueSlimListOut{}, err
 	}
 	defer st.Close()
 	issues, err := st.List(ctx, strVal(in.Status))
 	if err != nil {
-		return nil, nil, mapStoreErr(err)
+		return nil, issueSlimListOut{}, mapStoreErr(err)
 	}
 	if issues == nil {
-		return nil, []doltstore.IssueSlim{}, nil
+		return nil, issueSlimListOut{Issues: []doltstore.IssueSlim{}}, nil
 	}
-	return nil, doltstore.SlimIssues(issues), nil
+	slim := doltstore.SlimIssues(issues)
+	return nil, issueSlimListOut{Issues: slim, Count: len(slim)}, nil
 }
 
 func handleIssueCreate(ctx context.Context, _ *mcp.CallToolRequest, in issueCreateIn) (*mcp.CallToolResult, doltstore.Issue, error) {
@@ -471,106 +504,106 @@ func handleIssueNote(ctx context.Context, _ *mcp.CallToolRequest, in issueNoteIn
 	return nil, note, nil
 }
 
-func handleGraphExplore(ctx context.Context, _ *mcp.CallToolRequest, in graphExploreIn) (*mcp.CallToolResult, any, error) {
+func handleGraphExplore(ctx context.Context, _ *mcp.CallToolRequest, in graphExploreIn) (*mcp.CallToolResult, graph.ExploreResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ExploreResult{}, err
 	}
 	defer db.Close()
 	opts := graph.ExploreOpts{Query: in.Query, Budget: intVal(in.Budget)}
 	if in.IssueID != nil && *in.IssueID != "" {
 		st, err := openIssueStore(ctx, strVal(in.ProjectPath))
 		if err != nil {
-			return nil, nil, err
+			return nil, graph.ExploreResult{}, err
 		}
 		defer st.Close()
 		iss, err := st.Show(ctx, *in.IssueID)
 		if err != nil {
-			return nil, nil, mapStoreErr(err)
+			return nil, graph.ExploreResult{}, mapStoreErr(err)
 		}
 		opts.IssueSeedText = doltstore.IssueExploreSeedText(iss)
 	}
 	r, err := db.Explore(ctx, opts)
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ExploreResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphContext(ctx context.Context, _ *mcp.CallToolRequest, in graphSymbolIn) (*mcp.CallToolResult, any, error) {
+func handleGraphContext(ctx context.Context, _ *mcp.CallToolRequest, in graphSymbolIn) (*mcp.CallToolResult, graph.ContextResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ContextResult{}, err
 	}
 	defer db.Close()
 	r, err := db.Context(ctx, in.Symbol)
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ContextResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphImpact(ctx context.Context, _ *mcp.CallToolRequest, in graphImpactIn) (*mcp.CallToolResult, any, error) {
+func handleGraphImpact(ctx context.Context, _ *mcp.CallToolRequest, in graphImpactIn) (*mcp.CallToolResult, graph.ImpactResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ImpactResult{}, err
 	}
 	defer db.Close()
 	r, err := db.Impact(ctx, in.Symbol, intVal(in.Depth))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ImpactResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphDetectChanges(ctx context.Context, _ *mcp.CallToolRequest, in graphDetectIn) (*mcp.CallToolResult, any, error) {
+func handleGraphDetectChanges(ctx context.Context, _ *mcp.CallToolRequest, in graphDetectIn) (*mcp.CallToolResult, graph.DetectChangesResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.DetectChangesResult{}, err
 	}
 	defer db.Close()
 	r, err := db.DetectChanges(ctx, strVal(in.Ref))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.DetectChangesResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphPath(ctx context.Context, _ *mcp.CallToolRequest, in graphPathIn) (*mcp.CallToolResult, any, error) {
+func handleGraphPath(ctx context.Context, _ *mcp.CallToolRequest, in graphPathIn) (*mcp.CallToolResult, graph.QueryResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.QueryResult{}, err
 	}
 	defer db.Close()
 	r, err := db.Path(ctx, in.From, in.To)
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.QueryResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphExplain(ctx context.Context, _ *mcp.CallToolRequest, in graphSymbolIn) (*mcp.CallToolResult, any, error) {
+func handleGraphExplain(ctx context.Context, _ *mcp.CallToolRequest, in graphSymbolIn) (*mcp.CallToolResult, graph.ExplainResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ExplainResult{}, err
 	}
 	defer db.Close()
 	r, err := db.Explain(ctx, in.Symbol)
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.ExplainResult{}, err
 	}
 	return nil, r, nil
 }
 
-func handleGraphStatus(ctx context.Context, _ *mcp.CallToolRequest, in projectPathIn) (*mcp.CallToolResult, any, error) {
+func handleGraphStatus(ctx context.Context, _ *mcp.CallToolRequest, in projectPathIn) (*mcp.CallToolResult, graph.StatusResult, error) {
 	db, err := openGraphDB(ctx, strVal(in.ProjectPath))
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.StatusResult{}, err
 	}
 	defer db.Close()
 	r, err := db.Status(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, graph.StatusResult{}, err
 	}
 	return nil, r, nil
 }
