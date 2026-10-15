@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/ur-wesley/fabrik/cli/internal/check"
-	"github.com/ur-wesley/fabrik/cli/internal/memory"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 	"github.com/ur-wesley/fabrik/cli/internal/updatedeps"
 	"github.com/ur-wesley/fabrik/cli/internal/version"
@@ -43,11 +42,7 @@ func newCheckCmd() *cobra.Command {
 				return nil
 			}
 			check.Print(cmd.OutOrStdout(), r)
-			mem, err := memory.Check(cmd.Context())
-			if err != nil {
-				return err
-			}
-			memory.PrintCheck(cmd.OutOrStdout(), mem)
+			check.PrintPluginAdvisory(cmd.OutOrStdout())
 			if code != 0 {
 				return &check.ExitError{Code: code}
 			}

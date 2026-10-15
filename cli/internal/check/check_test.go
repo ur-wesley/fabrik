@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ur-wesley/fabrik/cli/internal/plugin"
 	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
@@ -57,4 +58,19 @@ func TestRunGraphSQLiteOnly(t *testing.T) {
 	r, code := Run(context.Background(), repo)
 	assert.Equal(t, 1, code)
 	assert.Equal(t, "missing", r.Dolt)
+}
+
+func TestPrintPluginAdvisory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	var missing bytes.Buffer
+	PrintPluginAdvisory(&missing)
+	assert.Contains(t, missing.String(), "warning: antigravity plugin fabrik is not installed")
+
+	require.NoError(t, plugin.Sync(home, false, &bytes.Buffer{}))
+	var current bytes.Buffer
+	PrintPluginAdvisory(&current)
+	assert.Empty(t, current.String(), "advisory must stay silent when the plugin is current")
 }
