@@ -36,6 +36,10 @@ func (s *Store) Close() error {
 	if s.DB == nil {
 		return nil
 	}
+	// sql.DB.Close is idempotent, so deferred double-close after an
+	// explicit Close (e.g. to release the Dolt lock before reopening)
+	// is safe. s.DB stays non-nil so use-after-close keeps returning
+	// "sql: database is closed" instead of panicking.
 	return s.DB.Close()
 }
 
@@ -316,7 +320,7 @@ func (s *Store) loadNotes(ctx context.Context, id string) ([]Note, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, body, created_at FROM issue_notes
 		WHERE issue_id = ?
-		ORDER BY created_at ASC, id ASC
+		ORDER BY created_at ASC, seq ASC
 	`, id)
 	if err != nil {
 		return nil, err

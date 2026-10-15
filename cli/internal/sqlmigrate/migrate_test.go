@@ -66,8 +66,8 @@ func TestMaxVersionDolt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != 1 {
-		t.Fatalf("expected 1, got %d", v)
+	if v != 2 {
+		t.Fatalf("expected 2, got %d", v)
 	}
 }
 

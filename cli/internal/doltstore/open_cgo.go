@@ -12,13 +12,14 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	embedded "github.com/dolthub/driver"
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
 )
 
 const HasCGO = true
 
 func openDB(ctx context.Context, doltDir string) (*sql.DB, error) {
-	if err := os.MkdirAll(doltDir, 0o755); err != nil {
+	if err := os.MkdirAll(doltDir, fileutil.DirPerm); err != nil {
 		return nil, err
 	}
 	abs, err := filepath.Abs(doltDir)

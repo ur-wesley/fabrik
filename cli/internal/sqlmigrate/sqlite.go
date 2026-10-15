@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	_ "modernc.org/sqlite"
 
+	"github.com/ur-wesley/fabrik/cli/internal/fileutil"
 	"github.com/ur-wesley/fabrik/cli/internal/sqliteutil"
 )
 
@@ -29,7 +29,7 @@ func ApplySQLite(ctx context.Context, kind, dbPath string) (bool, error) {
 	needCreate := false
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		needCreate = true
-		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dbPath), fileutil.DirPerm); err != nil {
 			return false, err
 		}
 	} else if err != nil {
@@ -43,17 +43,19 @@ func ApplySQLite(ctx context.Context, kind, dbPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer db.Close()
 
 	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
 		return false, err
 	}
 
 	have, err := currentVersion(ctx, db)
 	if err != nil {
+		_ = db.Close()
 		return false, err
 	}
 	if have > maxBin {
+		_ = db.Close()
 		return false, &ErrSchemaNewer{Store: kind, Have: have, Binary: maxBin}
 	}
 
@@ -64,27 +66,50 @@ func ApplySQLite(ctx context.Context, kind, dbPath string) (bool, error) {
 		}
 	}
 	if len(pending) == 0 {
+		_ = db.Close()
 		return false, nil
 	}
 
-	if !needCreate && !backedUp {
-		if err := copyFile(dbPath, backupPath); err != nil {
+	if !needCreate {
+		// WAL safety: checkpoint so all committed frames are in the main
+		// file, then CLOSE the pool before touching files. Copying or
+		// renaming a live WAL database copies a moving target and strands
+		// -wal/-shm state.
+		if _, err := db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+			_ = db.Close()
+			return false, err
+		}
+		if err := db.Close(); err != nil {
+			return false, err
+		}
+		if err := backupSQLiteFiles(dbPath, backupPath); err != nil {
 			return false, err
 		}
 		backedUp = true
+		db, err = sql.Open("sqlite", sqliteutil.DSN(dbPath))
+		if err != nil {
+			restoreSQLiteFiles(dbPath, backupPath)
+			return false, err
+		}
+		if err := db.PingContext(ctx); err != nil {
+			_ = db.Close()
+			restoreSQLiteFiles(dbPath, backupPath)
+			return false, err
+		}
 	}
 
 	for _, f := range pending {
 		if err := applyOneSQLite(ctx, db, f); err != nil {
+			_ = db.Close()
 			if backedUp {
-				_ = db.Close()
-				_ = os.Rename(backupPath, dbPath)
+				restoreSQLiteFiles(dbPath, backupPath)
 			}
 			return false, fmt.Errorf("sqlmigrate: %s: %w", f.Filename, err)
 		}
 	}
+	_ = db.Close()
 	if backedUp {
-		_ = os.Remove(backupPath)
+		removeSQLiteBackup(backupPath)
 	}
 	return true, nil
 }
@@ -136,21 +161,47 @@ func applyOneSQLite(ctx context.Context, db *sql.DB, f migrationFile) error {
 	return tx.Commit()
 }
 
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
+// sqliteSidecars lists the WAL sidecar suffixes shadowing a main db file.
+var sqliteSidecars = []string{"-wal", "-shm"}
+
+// backupSQLiteFiles copies the main database file plus any -wal/-shm
+// sidecars. Call only with no open handle on dbPath (after checkpoint+close)
+// so the copy is a consistent snapshot.
+func backupSQLiteFiles(dbPath, backupPath string) error {
+	if err := fileutil.CopyFile(dbPath, backupPath, fileutil.SecretPerm); err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
+	for _, suf := range sqliteSidecars {
+		if _, err := os.Stat(dbPath + suf); err != nil {
+			continue
+		}
+		if err := fileutil.CopyFile(dbPath+suf, backupPath+suf, fileutil.SecretPerm); err != nil {
+			removeSQLiteBackup(backupPath)
+			return err
+		}
 	}
-	defer func() {
-		_ = out.Close()
-	}()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
+	return nil
+}
+
+// restoreSQLiteFiles swaps the backup (main + sidecars) back over dbPath,
+// discarding the failed-migration state first. Call only with no open handle
+// on dbPath.
+func restoreSQLiteFiles(dbPath, backupPath string) {
+	_ = os.Remove(dbPath)
+	for _, suf := range sqliteSidecars {
+		_ = os.Remove(dbPath + suf)
 	}
-	return out.Close()
+	_ = os.Rename(backupPath, dbPath)
+	for _, suf := range sqliteSidecars {
+		if _, err := os.Stat(backupPath + suf); err == nil {
+			_ = os.Rename(backupPath+suf, dbPath+suf)
+		}
+	}
+}
+
+func removeSQLiteBackup(backupPath string) {
+	_ = os.Remove(backupPath)
+	for _, suf := range sqliteSidecars {
+		_ = os.Remove(backupPath + suf)
+	}
 }
