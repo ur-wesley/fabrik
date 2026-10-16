@@ -15,7 +15,7 @@ import (
 func newVcCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "vc",
-		Short: "Dolt version control for the issue store",
+		Short: "Version control for the issue store (git-backed)",
 	}
 	root.AddCommand(newVcStatusCmd(), newVcLogCmd(), newVcDiffCmd(), newVcCommitCmd(), newVcBranchCmd(), newVcCheckoutCmd(), newVcMergeCmd())
 	return root
@@ -60,7 +60,7 @@ func newVcLogCmd() *cobra.Command {
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "log",
-		Short: "List recent Dolt commits",
+		Short: "List recent commits",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
 			if err != nil {
@@ -170,7 +170,7 @@ func newVcBranchCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "branch [create <name>]",
-		Short: "List or create Dolt branches",
+		Short: "List or create branches",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
 			if err != nil {
@@ -218,7 +218,7 @@ func newVcCheckoutCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "checkout <name>",
-		Short: "Switch Dolt branch",
+		Short: "Switch branch",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return clierr.Usage("fabrik: usage: fabrik vc checkout <name>")
@@ -251,7 +251,7 @@ func newVcMergeCmd() *cobra.Command {
 	var strategy string
 	cmd := &cobra.Command{
 		Use:   "merge <branch>",
-		Short: "Merge another Dolt branch",
+		Short: "Merge another branch",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return clierr.Usage("fabrik: usage: fabrik vc merge <branch>")

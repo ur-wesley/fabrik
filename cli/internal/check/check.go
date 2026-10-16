@@ -28,16 +28,22 @@ func (e *ExitError) Error() string {
 }
 
 type RepoResult struct {
+	// IssuesStore is the neutral issue-store health; Dolt is a
+	// deprecated alias with the same value, kept so JSON consumers
+	// reading `dolt`/`dolt_path`/`schema_dolt` keep working.
+	IssuesStore string `json:"issues_store"`
+	IssuesPath  string `json:"issues_path"`
 	Dolt        string `json:"dolt"`
 	DoltPath    string `json:"dolt_path"`
 	Graph       string `json:"graph"`
 	GraphPath   string `json:"graph_path"`
+	SchemaIssues int   `json:"schema_issues"`
 	SchemaDolt  int    `json:"schema_dolt"`
 	SchemaGraph int    `json:"schema_graph"`
 	Issues      int    `json:"issues"`
 	GraphFiles  int    `json:"graph_files"`
 	// Memory stats are text-output only (spec v2/check.md: repo JSON has
-	// dolt/graph only; mem check JSON is separate). json:"-" keeps
+	// issues/graph only; mem check JSON is separate). json:"-" keeps
 	// PrintJSONTo output unchanged.
 	Memory       string `json:"-"`
 	Observations int    `json:"-"`
@@ -59,20 +65,24 @@ func Run(ctx context.Context, repoRoot string) (RepoResult, int) {
 	}
 
 	res := RepoResult{
-		DoltPath:  store.DoltDir(abs),
-		GraphPath: store.GraphDBPath(abs),
+		IssuesPath: store.IssuesDBPath(abs),
+		DoltPath:   store.IssuesDBPath(abs),
+		GraphPath:  store.GraphDBPath(abs),
 	}
 
-	if !dirExists(res.DoltPath) {
+	if !fileExists(res.IssuesPath) {
+		res.IssuesStore = "missing"
 		res.Dolt = "missing"
 		res.Graph = "missing"
 		fillMemory(ctx, &res)
 		return res, 1
 	}
+	res.IssuesStore = "ok"
 	res.Dolt = "ok"
 
 	st, err := doltstore.Open(ctx, abs)
 	if err != nil {
+		res.IssuesStore = "missing"
 		res.Dolt = "missing"
 		res.Graph = "missing"
 		fillMemory(ctx, &res)
@@ -80,6 +90,7 @@ func Run(ctx context.Context, repoRoot string) (RepoResult, int) {
 	}
 	defer st.Close()
 	if v, err := sqlmigrate.CurrentVersion(ctx, st.DB); err == nil {
+		res.SchemaIssues = v
 		res.SchemaDolt = v
 	}
 	if err := countTable(ctx, st.DB, "issues", &res.Issues); err != nil {
@@ -124,13 +135,18 @@ func countTable(ctx context.Context, db *sql.DB, table string, out *int) error {
 	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(out)
 }
 
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()
 }
 
 func Print(out io.Writer, r RepoResult) {
-	fmt.Fprintf(out, "dolt %s  schema %d  issues %d\n", r.Dolt, r.SchemaDolt, r.Issues)
+	fmt.Fprintf(out, "issues %s  schema %d  issues %d\n", r.IssuesStore, r.SchemaIssues, r.Issues)
 	fmt.Fprintf(out, "graph %s  graph_files %d\n", r.Graph, r.GraphFiles)
 	if r.Memory == "ok" {
 		fmt.Fprintf(out, "memory ok  observations %d  projects %d\n", r.Observations, r.Projects)

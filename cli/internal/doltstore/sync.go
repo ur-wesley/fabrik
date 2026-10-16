@@ -2,10 +2,9 @@ package doltstore
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
-	"time"
 )
 
 type RemoteInfo struct {
@@ -26,36 +25,52 @@ type PullResult struct {
 	Conflicts []string `json:"conflicts"`
 }
 
+// SyncResult is the `fabrik sync` outcome: a pull (git + ImportFile merge)
+// followed by a push (export + git commit + push).
+type SyncResult struct {
+	Remote    string   `json:"remote"`
+	Pulled    bool     `json:"pulled"`
+	Pushed    bool     `json:"pushed"`
+	Commits   int      `json:"commits"`
+	Conflicts []string `json:"conflicts"`
+}
+
 var ErrNoDoltRemote = fmt.Errorf("fabrik: no dolt remote (fabrik dolt remote add origin <url>)")
 
 func (s *Store) ListRemotes(ctx context.Context) ([]RemoteInfo, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT name, url FROM dolt_remotes ORDER BY name ASC`)
+	out, err := s.git(ctx, "remote", "-v")
 	if err != nil {
-		if isUnsupported(err) {
-			return nil, fmt.Errorf("fabrik: dolt remote: %w", err)
-		}
 		return nil, err
 	}
-	defer rows.Close()
-	var out []RemoteInfo
-	for rows.Next() {
-		var r RemoteInfo
-		if err := rows.Scan(&r.Name, &r.URL); err != nil {
-			return nil, err
+	seen := map[string]string{}
+	var order []string
+	if strings.TrimSpace(out) != "" {
+		for _, line := range strings.Split(out, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 3 || fields[2] != "(fetch)" {
+				continue
+			}
+			if _, ok := seen[fields[0]]; !ok {
+				order = append(order, fields[0])
+			}
+			seen[fields[0]] = fields[1]
 		}
-		out = append(out, r)
 	}
-	if out == nil {
-		out = []RemoteInfo{}
+	var remotes []RemoteInfo
+	for _, name := range order {
+		remotes = append(remotes, RemoteInfo{Name: name, URL: seen[name]})
 	}
-	return out, rows.Err()
+	if remotes == nil {
+		remotes = []RemoteInfo{}
+	}
+	return remotes, nil
 }
 
 func (s *Store) RemoteAdd(ctx context.Context, name, url string) error {
-	_, err := s.DB.ExecContext(ctx, `CALL dolt_remote('add', ?, ?)`, name, url)
-	if isUnsupported(err) {
-		return fmt.Errorf("fabrik: dolt remote add: driver does not support remotes (%v)", err)
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(url) == "" {
+		return fmt.Errorf("fabrik: usage: fabrik dolt remote add <name> <url>")
 	}
+	_, err := s.git(ctx, "remote", "add", name, url)
 	return err
 }
 
@@ -75,61 +90,89 @@ func (s *Store) defaultRemote(ctx context.Context) (string, error) {
 	return remotes[0].Name, nil
 }
 
-func (s *Store) DoltPush(ctx context.Context) (PushResult, error) {
-	st, err := s.VCStatus(ctx)
+// commitSnapshot exports the issue store and commits the .fabrik snapshot
+// when it changed. It reports whether a new commit was created. Only the
+// export snapshot plus tracked updates are staged (-u): the live DBs stay
+// untracked even where no .gitignore covers them.
+func (s *Store) commitSnapshot(ctx context.Context, message string) (bool, error) {
+	if _, err := s.exportSnapshot(ctx); err != nil {
+		return false, err
+	}
+	if _, err := s.git(ctx, "add", "--", ".fabrik/export/issues.jsonl"); err != nil {
+		return false, err
+	}
+	if _, err := s.git(ctx, "add", "-u", "--", ".fabrik"); err != nil {
+		return false, err
+	}
+	_, err := s.git(ctx, "-c", "user.name=fabrik", "-c", "user.email=fabrik@local",
+		"commit", "-m", message)
 	if err != nil {
-		return PushResult{}, err
+		if isNothingToCommitErr(err) {
+			return false, nil
+		}
+		return false, err
 	}
-	if st.Dirty {
-		return PushResult{}, fmt.Errorf("fabrik: dolt push: uncommitted changes")
-	}
+	return true, nil
+}
+
+func isUpToDate(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "up to date") ||
+		strings.Contains(lower, "up-to-date") ||
+		strings.Contains(lower, "everything up-to-date")
+}
+
+func (s *Store) DoltPush(ctx context.Context) (PushResult, error) {
 	remote, err := s.defaultRemote(ctx)
 	if err != nil {
 		return PushResult{}, err
 	}
-	branch := st.Branch
-	var rows *sql.Rows
-	var lastErr error
-	for attempt := 0; attempt < 4; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt*100) * time.Millisecond)
-		}
-		r, err := s.DB.QueryContext(ctx, `CALL DOLT_PUSH(?, ?)`, remote, branch)
-		if isUnsupported(err) {
-			return PushResult{}, fmt.Errorf("fabrik: dolt push: driver does not support DOLT_PUSH (%v)", err)
-		}
-		if err != nil && pushContention(err) && attempt < 3 {
-			lastErr = err
-			continue
-		}
-		if err != nil {
-			return PushResult{}, fmt.Errorf("fabrik: dolt push: %w", err)
-		}
-		rows = r
-		break
+	branch, err := s.gitBranch(ctx)
+	if err != nil {
+		return PushResult{}, err
 	}
-	if rows == nil {
-		if lastErr != nil {
-			return PushResult{}, fmt.Errorf("fabrik: dolt push: %w", lastErr)
-		}
-		return PushResult{}, fmt.Errorf("fabrik: dolt push: failed")
+	committed, err := s.commitSnapshot(ctx, "sync: export issues")
+	if err != nil {
+		return PushResult{}, fmt.Errorf("fabrik: dolt push: %w", err)
 	}
-	defer rows.Close()
-	commits := 0
-	pushed := false
-	for rows.Next() {
-		var ref, status string
-		if err := rows.Scan(&ref, &status); err == nil {
-			if strings.Contains(strings.ToLower(status), "success") || status == "0" {
-				pushed = true
-				commits++
-			}
+	ahead := s.aheadCount(ctx, remote, branch)
+	if _, err := s.git(ctx, "push", remote, branch); err != nil {
+		if isUpToDate(err.Error()) {
+			return PushResult{Remote: remote, Pushed: false, Commits: 0}, nil
 		}
+		return PushResult{}, fmt.Errorf("fabrik: dolt push: %w", err)
 	}
-	if !pushed && commits == 0 {
+	// Push succeeded. Nothing was pushed when we committed nothing and
+	// HEAD was already at the remote (ahead == 0). Unknown counts
+	// (no remote branch yet) count as pushed.
+	if !committed && ahead == 0 {
 		return PushResult{Remote: remote, Pushed: false, Commits: 0}, nil
 	}
-	return PushResult{Remote: remote, Pushed: pushed || commits > 0, Commits: commits}, nil
+	commits := ahead
+	if commits < 0 {
+		commits = 0
+	}
+	if committed {
+		commits++
+	}
+	if commits == 0 {
+		commits = 1
+	}
+	return PushResult{Remote: remote, Pushed: true, Commits: commits}, nil
+}
+
+// aheadCount reports how many local commits the remote branch lacks.
+// -1 means unknown (e.g. the remote branch does not exist yet).
+func (s *Store) aheadCount(ctx context.Context, remote, branch string) int {
+	out, err := s.git(ctx, "rev-list", "--count", remote+"/"+branch+"..HEAD")
+	if err != nil {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 func (s *Store) DoltPull(ctx context.Context) (PullResult, error) {
@@ -137,44 +180,56 @@ func (s *Store) DoltPull(ctx context.Context) (PullResult, error) {
 	if err != nil {
 		return PullResult{}, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `CALL DOLT_PULL(?)`, remote)
-	if isUnsupported(err) {
-		return PullResult{}, fmt.Errorf("fabrik: dolt pull: driver does not support DOLT_PULL (%v)", err)
-	}
+	branch, err := s.gitBranch(ctx)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
-			_, _ = s.DB.ExecContext(ctx, `CALL DOLT_RESET('--hard')`)
+		return PullResult{}, err
+	}
+	before := s.gitHead(ctx)
+	out, err := s.git(ctx, "pull", "--no-rebase", remote, branch)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(strings.ToLower(msg), "conflict") ||
+			strings.Contains(strings.ToLower(msg), "automatic merge failed") {
 			conflicts, _ := s.listConflicts(ctx)
-			return PullResult{Remote: remote, Pulled: false, Commits: 0, Conflicts: conflicts}, fmt.Errorf("fabrik: dolt pull: %w", err)
+			return PullResult{Remote: remote, Pulled: false, Commits: 0, Conflicts: conflicts},
+				fmt.Errorf("fabrik: dolt pull: %w", err)
+		}
+		// A fresh repo with no upstream history reports "couldn't find
+		// remote ref": nothing to pull, then merge the local snapshot
+		// state (no-op when the file is absent).
+		if strings.Contains(strings.ToLower(msg), "couldn't find remote ref") {
+			return PullResult{Remote: remote, Pulled: false, Commits: 0, Conflicts: []string{}}, nil
 		}
 		return PullResult{}, fmt.Errorf("fabrik: dolt pull: %w", err)
 	}
-	defer rows.Close()
+	pulled := !isUpToDate(out) || s.gitHead(ctx) != before
 	commits := 0
-	pulled := false
-	for rows.Next() {
-		pulled = true
-		commits++
+	if pulled {
+		commits = 1
 	}
-	if !pulled {
-		return PullResult{Remote: remote, Pulled: false, Commits: 0, Conflicts: []string{}}, nil
+	if _, err := s.ImportFile(ctx, s.ExportPath()); err != nil {
+		return PullResult{}, fmt.Errorf("fabrik: dolt pull: %w", err)
 	}
-	return PullResult{Remote: remote, Pulled: true, Commits: commits, Conflicts: []string{}}, nil
+	if conflicts, _ := s.listConflicts(ctx); len(conflicts) > 0 {
+		return PullResult{Remote: remote, Pulled: pulled, Commits: commits, Conflicts: conflicts},
+			fmt.Errorf("fabrik: dolt pull: merge has conflicts")
+	}
+	return PullResult{Remote: remote, Pulled: pulled, Commits: commits, Conflicts: []string{}}, nil
 }
 
-func pushContention(err error) bool {
-	if err == nil {
-		return false
+// Sync pulls (git + snapshot merge) then pushes (export + commit + push).
+// It is the `fabrik sync` trigger sharing the dolt push/pull seams.
+func (s *Store) Sync(ctx context.Context) (SyncResult, error) {
+	pull, err := s.DoltPull(ctx)
+	if err != nil {
+		return SyncResult{}, err
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "lease") || strings.Contains(msg, "contention") ||
-		strings.Contains(msg, "busy") || strings.Contains(msg, "timeout")
-}
-
-func isUnsupported(err error) bool {
-	if err == nil {
-		return false
+	push, err := s.DoltPush(ctx)
+	if err != nil {
+		return SyncResult{}, err
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "not supported") || strings.Contains(msg, "unsupported") || strings.Contains(msg, "nocgo")
+	return SyncResult{
+		Remote: pull.Remote, Pulled: pull.Pulled, Pushed: push.Pushed,
+		Commits: pull.Commits + push.Commits, Conflicts: pull.Conflicts,
+	}, nil
 }

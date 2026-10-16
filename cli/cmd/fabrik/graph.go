@@ -196,7 +196,7 @@ func newGraphExploreCmd() *cobra.Command {
 			defer db.Close()
 			opts := graph.ExploreOpts{Query: strings.Join(args, " "), Budget: budget}
 			if issueID != "" {
-				st, err := openRepoStore(cmd)
+				st, err := openIssueStore(cmd)
 				if err != nil {
 					return err
 				}

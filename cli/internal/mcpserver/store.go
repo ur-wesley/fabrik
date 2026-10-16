@@ -7,13 +7,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/export"
 	"github.com/ur-wesley/fabrik/cli/internal/graph"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
 
-func openIssueStore(ctx context.Context, projectPath string) (*doltstore.Store, error) {
+func openIssueStore(ctx context.Context, projectPath string) (*issuestore.Store, error) {
 	start := projectPath
 	if start == "" {
 		wd, err := os.Getwd()
@@ -26,14 +26,14 @@ func openIssueStore(ctx context.Context, projectPath string) (*doltstore.Store, 
 	if err != nil {
 		return nil, mapStoreErr(err)
 	}
-	st, err := doltstore.Open(ctx, root)
+	st, err := issuestore.Open(ctx, root)
 	if err != nil {
 		return nil, mapStoreErr(err)
 	}
 	return st, nil
 }
 
-func afterIssueWrite(ctx context.Context, st *doltstore.Store, issueID string, publish bool) error {
+func afterIssueWrite(ctx context.Context, st *issuestore.Store, issueID string, publish bool) error {
 	if !publish {
 		return nil
 	}

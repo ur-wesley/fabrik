@@ -49,7 +49,7 @@ func TestCheckJSONShape(t *testing.T) {
 	require.GreaterOrEqual(t, idx, 0)
 	var m map[string]any
 	require.NoError(t, json.NewDecoder(strings.NewReader(out[idx:])).Decode(&m))
-	for _, k := range []string{"dolt", "dolt_path", "graph", "graph_path", "schema_dolt", "issues", "graph_files"} {
+	for _, k := range []string{"dolt", "dolt_path", "graph", "graph_path", "schema_dolt", "issues", "graph_files", "issues_store", "issues_path", "schema_issues"} {
 		assert.Contains(t, m, k)
 	}
 }

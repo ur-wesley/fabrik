@@ -14,7 +14,7 @@ const serverInstructions = `1. mem_current_project then mem_context (cwd project
 2. Code questions: graph_explore first when .fabrik/graph.db exists; do not grep the whole repo first.
 3. Work queue: issue_claim (omit id for claim-next) → issue_show → implement → issue_close (as assignee).
 4. Hand off with mem_session_summary and mem_save for durable decisions.
-5. Shared repo: human or script runs fabrik dolt pull / push; MCP does not auto-sync.`
+5. Shared repo: human or script runs fabrik sync (or dolt pull / push); MCP does not auto-sync.`
 
 func NewServer() *mcp.Server {
 	impl := &mcp.Implementation{Name: "fabrik", Version: version.Get()}

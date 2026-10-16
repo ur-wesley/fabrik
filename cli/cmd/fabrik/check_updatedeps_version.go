@@ -23,7 +23,7 @@ func newCheckCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "check",
-		Short: "Report repo Dolt/graph store health",
+		Short: "Report repo issues/graph store health",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot := repoDirFlag
 			if repoRoot == "" {

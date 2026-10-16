@@ -1,42 +1,35 @@
-//go:build cgo
-
 package doltstore
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
 
-func TestCreateRejectsEmptyTitle(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+func openTestStore(t *testing.T) *Store {
+	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(store.DoltDir(dir), 0o755))
 	ctx := context.Background()
 	st, err := Open(ctx, dir)
 	require.NoError(t, err)
-	defer st.Close()
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
 
-	_, err = st.Create(ctx, CreateInput{Title: "   ", Kind: "task"})
+func TestCreateRejectsEmptyTitle(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	_, err := st.Create(ctx, CreateInput{Title: "   ", Kind: "task"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "title is required")
 }
 
 func TestDepAfterCloseReturnsError(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(store.DoltDir(dir), 0o755))
+	st := openTestStore(t)
 	ctx := context.Background()
-	st, err := Open(ctx, dir)
-	require.NoError(t, err)
 	p2 := 2
 	a, err := st.Create(ctx, CreateInput{Title: "A", Priority: &p2, Kind: "task"})
 	require.NoError(t, err)
@@ -48,15 +41,8 @@ func TestDepAfterCloseReturnsError(t *testing.T) {
 }
 
 func TestCreateDefaultPriority(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(store.DoltDir(dir), 0o755))
+	st := openTestStore(t)
 	ctx := context.Background()
-	st, err := Open(ctx, dir)
-	require.NoError(t, err)
-	defer st.Close()
 
 	iss, err := st.Create(ctx, CreateInput{Title: "Default priority", Kind: "task"})
 	require.NoError(t, err)
@@ -64,15 +50,8 @@ func TestCreateDefaultPriority(t *testing.T) {
 }
 
 func TestOpenListCreateShow(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(store.DoltDir(dir), 0o755))
+	st := openTestStore(t)
 	ctx := context.Background()
-	st, err := Open(ctx, dir)
-	require.NoError(t, err)
-	defer st.Close()
 
 	list, err := st.List(ctx, "")
 	require.NoError(t, err)
@@ -98,15 +77,8 @@ func TestOpenListCreateShow(t *testing.T) {
 }
 
 func TestReadyClaimCloseDepNote(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(store.DoltDir(dir), 0o755))
+	st := openTestStore(t)
 	ctx := context.Background()
-	st, err := Open(ctx, dir)
-	require.NoError(t, err)
-	defer st.Close()
 
 	p2, p1 := 2, 1
 	blocker, err := st.Create(ctx, CreateInput{Title: "Blocker", Priority: &p2, Kind: "task"})

@@ -13,7 +13,7 @@ import (
 func newDoltCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "dolt",
-		Short: "Sync the embedded Dolt issue store",
+		Short: "Sync the issue store via git (dolt-compatible surface)",
 	}
 	root.AddCommand(newDoltPushCmd(), newDoltPullCmd(), newDoltRemoteCmd())
 	return root
@@ -23,7 +23,7 @@ func newDoltPushCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "push",
-		Short: "Push Dolt commits to remote",
+		Short: "Push issue snapshot to remote",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
 			if err != nil {
@@ -56,7 +56,7 @@ func newDoltPullCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Pull Dolt commits from remote",
+		Short: "Pull issue snapshot from remote",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
 			if err != nil {
@@ -91,7 +91,7 @@ func newDoltPullCmd() *cobra.Command {
 func newDoltRemoteCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "remote",
-		Short: "Manage Dolt remotes",
+		Short: "Manage git remotes for issue sync",
 	}
 	root.AddCommand(newDoltRemoteAddCmd(), newDoltRemoteListCmd())
 	return root
@@ -100,7 +100,7 @@ func newDoltRemoteCmd() *cobra.Command {
 func newDoltRemoteAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <name> <url>",
-		Short: "Add a Dolt remote",
+		Short: "Add a sync remote",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
@@ -122,7 +122,7 @@ func newDoltRemoteListCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Dolt remotes",
+		Short: "List sync remotes",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRepoStore(cmd)
 			if err != nil {
