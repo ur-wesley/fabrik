@@ -34,16 +34,28 @@ func hasDolt(dir string) bool {
 	return err == nil && st.IsDir()
 }
 
+// hasIssuesDB reports the SQLite issue store (.fabrik/issues.db).
+func hasIssuesDB(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, ".fabrik", "issues.db"))
+	return err == nil && !st.IsDir()
+}
+
+// hasIssueStore reports any known issue store: legacy .fabrik/dolt or
+// the SQLite .fabrik/issues.db.
+func hasIssueStore(dir string) bool {
+	return hasDolt(dir) || hasIssuesDB(dir)
+}
+
 func repoRootFromGit(start string) (string, bool) {
 	top, err := gitTopLevel(start)
 	if err != nil {
 		return "", false
 	}
-	if hasDolt(top) {
+	if hasIssueStore(top) {
 		return top, true
 	}
 	main, err := gitMainWorktree(start)
-	if err == nil && main != "" && main != top && hasDolt(main) {
+	if err == nil && main != "" && main != top && hasIssueStore(main) {
 		return main, true
 	}
 	return "", false

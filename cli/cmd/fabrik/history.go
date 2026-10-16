@@ -15,7 +15,7 @@ func newHistoryCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "history <id>",
-		Short: "Show Dolt history for an issue or note",
+		Short: "Show history for an issue or note",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return clierr.Usage("fabrik: usage: fabrik history <id>")
@@ -24,7 +24,7 @@ func newHistoryCmd() *cobra.Command {
 			if !historyIDRe.MatchString(id) {
 				return fmt.Errorf("fabrik: history expects f- or n- id")
 			}
-			st, err := openRepoStore(cmd)
+			st, err := openIssueStore(cmd)
 			if err != nil {
 				return err
 			}

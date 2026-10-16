@@ -16,7 +16,7 @@ func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the Fabrik workflow: align, plan, build (port of fabrik.sh)",
-		Long: `Setup gate (.fabrik/dolt + config.yaml), then --auto generates the PRD
+		Long: `Setup gate (issues.db + config.yaml), then --auto generates the PRD
 via 'opencode run' or launches the TUI, then plans and pauses for APPROVE
 before the build wave (shared CTA agents/cta.md).`,
 		RunE: func(cmd *cobra.Command, args []string) error {

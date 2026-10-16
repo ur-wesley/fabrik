@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,9 +17,8 @@ func TestExportNoStore(t *testing.T) {
 }
 
 func TestExportJSON(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, dir)
 	t.Chdir(dir)
 	out, err := run(t, "export", "--json")
 	require.NoError(t, err)

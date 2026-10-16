@@ -3,7 +3,7 @@
 //
 // Mapping:
 //
-//	beads (.beads/issues.jsonl, else `bd list --all --json`) -> .fabrik/dolt
+//	beads (.beads/issues.jsonl, else `bd list --all --json`) -> .fabrik/issues.db
 //	  issues (id -> deterministic f- id, title/body/status/priority/kind,
 //	  design folded into body) plus dependency edges (blocks vs relates) and
 //	  notes (comments, notes string, close reason -> issue_notes).
@@ -23,9 +23,7 @@
 // Beads issue ids (e.g. cli-hrq) do not fit the Fabrik id shape
 // (^f-[0-9a-f]{8,32}$), so imports get deterministic f- ids derived from the
 // Beads id: re-running an import reuses the same ids and skips rows that
-// already exist. Writing .fabrik/dolt needs the embedded Dolt engine
-// (CGO_ENABLED=1); without it the beads leg reports a skip and the
-// graph/memory legs still run.
+// already exist. The target is the SQLite .fabrik/issues.db store.
 package migrater
 
 import (
@@ -35,7 +33,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,15 +44,11 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
 	"github.com/ur-wesley/fabrik/cli/internal/sqliteutil"
 	"github.com/ur-wesley/fabrik/cli/internal/sqlmigrate"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
-
-// errNoDoltEngine reports that .fabrik/dolt cannot be written because the
-// binary was built without the embedded Dolt engine (CGO_ENABLED=0).
-var errNoDoltEngine = errors.New("dolt engine unavailable in this build (needs CGO_ENABLED=1)")
 
 // ImportItem is one detected legacy source with its native target.
 type ImportItem struct {
@@ -113,7 +106,7 @@ func PlanImport(repo string, d Deps) (ImportPlan, error) {
 		plan.Items = append(plan.Items, ImportItem{
 			Source:  "beads",
 			From:    from,
-			To:      ".fabrik/dolt",
+			To:      ".fabrik/issues.db",
 			Summary: fmt.Sprintf("%d beads issues", len(beads)),
 			Count:   len(beads),
 		})
@@ -180,25 +173,18 @@ func runImport(ctx context.Context, abs string, d Deps, plan ImportPlan, out io.
 	if len(plan.beads) > 0 {
 		res, err := importBeads(ctx, abs, plan.beads)
 		if err != nil {
-			if errors.Is(err, errNoDoltEngine) {
-				notices = append(notices, fmt.Sprintf(
-					"beads: found %d issues, %d deps, %d notes (%s); %s — skipped",
-					len(plan.beads), plan.beadsDeps, plan.beadsNotes, plan.beadsFrom, errNoDoltEngine))
-			} else {
-				return done, notices, err
-			}
-		} else {
-			done = append(done, ImportItem{Source: "beads", From: plan.beadsFrom,
-				To: ".fabrik/dolt", Summary: fmt.Sprintf("%d beads issues", res.issues), Count: res.issues})
-			fmt.Fprintf(out, "imported %d beads issues to .fabrik/dolt (%d already present)\n", res.issues, res.issuesPresent)
-			if res.deps+res.notes > 0 || res.depsPresent+res.notesPresent > 0 {
-				fmt.Fprintf(out, "imported %d beads deps and %d beads notes to .fabrik/dolt (%d already present)\n",
-					res.deps, res.notes, res.depsPresent+res.notesPresent)
-			}
-			if res.skippedDeps > 0 {
-				notices = append(notices, fmt.Sprintf(
-					"beads: %d dependencies reference issues outside the import set — skipped", res.skippedDeps))
-			}
+			return done, notices, err
+		}
+		done = append(done, ImportItem{Source: "beads", From: plan.beadsFrom,
+			To: ".fabrik/issues.db", Summary: fmt.Sprintf("%d beads issues", res.issues), Count: res.issues})
+		fmt.Fprintf(out, "imported %d beads issues to .fabrik/issues.db (%d already present)\n", res.issues, res.issuesPresent)
+		if res.deps+res.notes > 0 || res.depsPresent+res.notesPresent > 0 {
+			fmt.Fprintf(out, "imported %d beads deps and %d beads notes to .fabrik/issues.db (%d already present)\n",
+				res.deps, res.notes, res.depsPresent+res.notesPresent)
+		}
+		if res.skippedDeps > 0 {
+			notices = append(notices, fmt.Sprintf(
+				"beads: %d dependencies reference issues outside the import set — skipped", res.skippedDeps))
 		}
 	}
 	if len(plan.graph.nodes) > 0 || len(plan.graph.edges) > 0 {
@@ -652,7 +638,7 @@ type beadsImportResult struct {
 	skippedDeps           int
 }
 
-// importBeads inserts detected Beads issues into .fabrik/dolt, skipping ids
+// importBeads inserts detected Beads issues into .fabrik/issues.db, skipping ids
 // that already exist, then edges (issue_deps) and notes (issue_notes) with
 // the same idempotency. A new blocks edge flips an open blocked issue to
 // blocked, mirroring `fabrik issue dep`.
@@ -661,10 +647,7 @@ func importBeads(ctx context.Context, abs string, issues []beadsIssue) (beadsImp
 	if len(issues) == 0 {
 		return res, nil
 	}
-	if !doltstore.HasCGO {
-		return res, errNoDoltEngine
-	}
-	st, err := doltstore.Open(ctx, abs)
+	st, err := issuestore.Open(ctx, abs)
 	if err != nil {
 		return res, err
 	}
@@ -740,27 +723,35 @@ func importBeads(ctx context.Context, abs string, issues []beadsIssue) (beadsImp
 			if when == "" {
 				when = now
 			}
+			seq, err := nextIssueNoteSeq(ctx, st.DB)
+			if err != nil {
+				return res, err
+			}
 			if _, err := st.DB.ExecContext(ctx, `
-				INSERT INTO issue_notes (id, issue_id, body, created_at) VALUES (?, ?, ?, ?)`,
-				nid, id, n.Body, when); err != nil {
+				INSERT INTO issue_notes (id, issue_id, body, created_at, seq) VALUES (?, ?, ?, ?, ?)`,
+				nid, id, n.Body, when, seq); err != nil {
 				return res, fmt.Errorf("import beads note for %s: %w", iss.ID, err)
 			}
 			res.notes++
 		}
 	}
-	if total := res.issues + res.deps + res.notes; total > 0 {
-		msg := fmt.Sprintf("migrate: import %d beads issues", res.issues)
-		if res.issues == 0 {
-			msg = "migrate: import beads deps/notes"
-		}
-		if err := st.Commit(ctx, msg); err != nil {
-			return res, err
-		}
-	}
 	return res, nil
 }
 
-// applyImportedBlock mirrors doltstore Dep for kind=blocks: when the insert
+// nextIssueNoteSeq allocates the next issue_notes.seq value (SQLite
+// emulates the old AUTO_INCREMENT with max(seq)+1).
+func nextIssueNoteSeq(ctx context.Context, db *sql.DB) (int64, error) {
+	var n sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT MAX(seq) FROM issue_notes`).Scan(&n); err != nil {
+		return 0, err
+	}
+	if !n.Valid {
+		return 1, nil
+	}
+	return n.Int64 + 1, nil
+}
+
+// applyImportedBlock mirrors issuestore Dep for kind=blocks: when the insert
 // is new and the blocker is not done and the blocked issue is open, the
 // blocked issue becomes blocked.
 func applyImportedBlock(ctx context.Context, db *sql.DB, blocked, blocker, now string) error {

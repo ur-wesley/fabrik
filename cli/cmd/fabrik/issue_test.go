@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,9 +18,8 @@ func TestIssueNoStore(t *testing.T) {
 }
 
 func TestIssueListEmptyJSON(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, dir)
 	t.Chdir(dir)
 	out, err := run(t, "issue", "list", "--json")
 	require.NoError(t, err)
@@ -32,9 +29,8 @@ func TestIssueListEmptyJSON(t *testing.T) {
 }
 
 func TestIssueCreateShow(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, dir)
 	t.Chdir(dir)
 	out, err := run(t, "issue", "create", "Document claim", "--acceptance", "Docs name exit codes", "--json")
 	require.NoError(t, err)
@@ -51,9 +47,8 @@ func TestIssueCreateShow(t *testing.T) {
 }
 
 func TestIssueReadyClaimClose(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, dir)
 	t.Chdir(dir)
 
 	out, err := run(t, "issue", "create", "Blocker", "--json")

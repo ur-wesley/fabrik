@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/exec"
 	"github.com/ur-wesley/fabrik/cli/internal/initer"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
@@ -28,9 +27,6 @@ func testEnv(t *testing.T, f *exec.Fake) (Deps, *bytes.Buffer) {
 
 func initTestRepo(t *testing.T, f *exec.Fake) string {
 	t.Helper()
-	if !doltstore.HasCGO {
-		t.Skip("requires CGO_ENABLED=1")
-	}
 	repo := t.TempDir()
 	initDeps := initer.Deps{
 		Exec:  f,

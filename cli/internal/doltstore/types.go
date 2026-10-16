@@ -34,6 +34,15 @@ type Note struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// Dep is one issue_deps edge. It backs the export snapshot and the sync
+// merge (union by triple); added for the SQLite sync path, also implemented
+// by the legacy Dolt store so `dolt pull` keeps exporting.
+type Dep struct {
+	BlockerID string `json:"blocker_id"`
+	BlockedID string `json:"blocked_id"`
+	Kind      string `json:"kind"`
+}
+
 type CloseResult struct {
 	Issue  Issue
 	NoteID string

@@ -61,13 +61,43 @@ func TestMaxVersionMemory(t *testing.T) {
 	}
 }
 
-func TestMaxVersionDolt(t *testing.T) {
-	v, err := MaxVersion("dolt")
+func TestMaxVersionIssues(t *testing.T) {
+	v, err := MaxVersion("issues")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != 2 {
 		t.Fatalf("expected 2, got %d", v)
+	}
+}
+
+func TestApplySQLiteIssuesCreatesTables(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "issues.db")
+	ctx := context.Background()
+	if _, err := ApplySQLite(ctx, "issues", dbPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplySQLite(ctx, "issues", dbPath); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, table := range []string{"issues", "issue_deps", "issue_notes", "meta"} {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM `+table).Scan(&n); err != nil {
+			t.Fatalf("table %s: %v", table, err)
+		}
+	}
+	var ver string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE name = 'schema_version'`).Scan(&ver); err != nil {
+		t.Fatal(err)
+	}
+	if ver != "2" {
+		t.Fatalf("expected schema_version 2, got %q", ver)
 	}
 }
 

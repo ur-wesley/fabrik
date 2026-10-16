@@ -23,9 +23,10 @@ func testEnv(t *testing.T, repo string, f *exec.Fake) (Deps, *bytes.Buffer) {
 		Check: func(ctx context.Context) error { return nil },
 		InitStores: func(ctx context.Context, abs string, r exec.Runner) (StoreResult, error) {
 			return StoreResult{
-				DoltPath:  filepath.Join(abs, ".fabrik", "dolt"),
-				GraphPath: filepath.Join(abs, ".fabrik", "graph.db"),
-				Created:   true,
+				IssuesPath: filepath.Join(abs, ".fabrik", "issues.db"),
+				DoltPath:   filepath.Join(abs, ".fabrik", "issues.db"),
+				GraphPath:  filepath.Join(abs, ".fabrik", "graph.db"),
+				Created:    true,
 			}, nil
 		},
 		RegisterMCP: func([]string, string) error { return nil },
@@ -131,7 +132,7 @@ func TestInitThinDefault(t *testing.T) {
 	assert.DirExists(t, filepath.Join(repo, ".gemini"))
 	assert.NoDirExists(t, filepath.Join(repo, ".claude"))
 	assert.NoDirExists(t, filepath.Join(repo, ".codex"))
-	assert.Contains(t, out.String(), "dolt ")
+	assert.Contains(t, out.String(), "issues ")
 	assert.Contains(t, out.String(), "graph ")
 }
 
@@ -203,7 +204,7 @@ func TestInitFullLegacy(t *testing.T) {
 	legacyBody, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(legacyBody), "Fabrik workflow")
-	assert.Contains(t, out.String(), "dolt ")
+	assert.Contains(t, out.String(), "issues ")
 	assert.Contains(t, out.String(), "graph ")
 }
 

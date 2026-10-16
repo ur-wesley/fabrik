@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
 	"github.com/ur-wesley/fabrik/cli/internal/listen"
 )
 
@@ -23,7 +23,7 @@ var (
 	exportTimer   *time.Timer
 )
 
-func PublishAfterSave(ctx context.Context, st *doltstore.Store, issueID string, op string) error {
+func PublishAfterSave(ctx context.Context, st *issuestore.Store, issueID string, op string) error {
 	exportMu.Lock()
 	defer exportMu.Unlock()
 	exportPending = &pendingExport{repo: st.Repo, issueID: issueID, op: op}
@@ -40,7 +40,7 @@ func PublishAfterSave(ctx context.Context, st *doltstore.Store, issueID string, 
 			return
 		}
 		bg := context.Background()
-		st2, err := doltstore.Open(bg, p.repo)
+		st2, err := issuestore.Open(bg, p.repo)
 		if err != nil {
 			return
 		}
@@ -51,7 +51,7 @@ func PublishAfterSave(ctx context.Context, st *doltstore.Store, issueID string, 
 	return nil
 }
 
-func PublishIssues(ctx context.Context, st *doltstore.Store) error {
+func PublishIssues(ctx context.Context, st *issuestore.Store) error {
 	if _, err := Issues(ctx, st); err != nil {
 		return err
 	}

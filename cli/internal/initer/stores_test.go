@@ -1,5 +1,3 @@
-//go:build cgo
-
 package initer
 
 import (
@@ -14,18 +12,20 @@ import (
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
 
-func TestInitRepoStoresCreatesDoltAndGraph(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
+// cli-x3a: init creates the SQLite issue store (no CGO-gated Dolt needed).
+// cli-a35: StoreResult carries the neutral IssuesPath; DoltPath stays as a
+// deprecated alias with the same value.
+func TestInitRepoStoresCreatesIssuesAndGraph(t *testing.T) {
 	repo := t.TempDir()
 	res, err := InitRepoStores(context.Background(), repo, exec.OSRunner{})
 	require.NoError(t, err)
 	assert.True(t, res.Created)
-	assert.DirExists(t, res.DoltPath)
+	assert.Equal(t, store.IssuesDBPath(repo), res.IssuesPath)
+	assert.Equal(t, res.IssuesPath, res.DoltPath)
+	assert.FileExists(t, res.IssuesPath)
 	assert.FileExists(t, res.GraphPath)
 	assert.FileExists(t, filepath.Join(repo, ".gitignore"))
-	assert.Contains(t, string(mustRead(filepath.Join(repo, ".gitignore"))), ".fabrik/dolt/")
+	assert.Contains(t, string(mustRead(filepath.Join(repo, ".gitignore"))), ".fabrik/issues.db")
 }
 
 func mustRead(path string) []byte {
@@ -37,9 +37,6 @@ func mustRead(path string) []byte {
 }
 
 func TestInitRepoStoresIdempotentCreatedFlag(t *testing.T) {
-	if os.Getenv("CGO_ENABLED") == "0" {
-		t.Skip("requires CGO_ENABLED=1")
-	}
 	repo := t.TempDir()
 	_, err := InitRepoStores(context.Background(), repo, exec.OSRunner{})
 	require.NoError(t, err)
@@ -47,4 +44,16 @@ func TestInitRepoStoresIdempotentCreatedFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, res.Created)
 	_ = store.GraphDBPath(repo)
+}
+
+func TestInitRepoStoresStripsLegacyExportIgnore(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"),
+		[]byte("node_modules\n.fabrik/export/\n"), 0o644))
+	_, err := InitRepoStores(context.Background(), repo, exec.OSRunner{})
+	require.NoError(t, err)
+	body := string(mustRead(filepath.Join(repo, ".gitignore")))
+	assert.NotContains(t, body, ".fabrik/export/")
+	assert.Contains(t, body, "node_modules")
+	assert.Contains(t, body, ".fabrik/issues.db")
 }

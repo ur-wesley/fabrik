@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/export"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
 	"github.com/ur-wesley/fabrik/cli/internal/listen"
 	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
@@ -49,11 +49,11 @@ func (listenIssueAPI) ShowJSON(ctx context.Context, repo, issueID string) ([]byt
 	return json.Marshal(iss)
 }
 
-func openStoreAt(ctx context.Context, repo string) (*doltstore.Store, error) {
+func openStoreAt(ctx context.Context, repo string) (*issuestore.Store, error) {
 	if !hasRepoStore(repo) {
 		return nil, &listen.APIError{Status: http.StatusNotFound, Msg: "not found"}
 	}
-	st, err := doltstore.Open(ctx, repo)
+	st, err := issuestore.Open(ctx, repo)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, &listen.APIError{Status: http.StatusNotFound, Msg: "not found"}
@@ -64,21 +64,20 @@ func openStoreAt(ctx context.Context, repo string) (*doltstore.Store, error) {
 }
 
 func hasRepoStore(repo string) bool {
-	dolt := store.DoltDir(repo)
-	info, err := os.Stat(dolt)
-	return err == nil && info.IsDir()
+	_, err := store.RequireRepo(repo)
+	return err == nil
 }
 
 func mapListenStoreErr(issueID string, err error) error {
-	if errors.Is(err, doltstore.ErrNotFound) {
+	if errors.Is(err, issuestore.ErrNotFound) {
 		return &listen.APIError{Status: http.StatusNotFound, Msg: "not found"}
 	}
-	var tooLong *doltstore.ErrNoteTooLong
+	var tooLong *issuestore.ErrNoteTooLong
 	if errors.As(err, &tooLong) {
 		return &listen.APIError{Status: http.StatusBadRequest, Msg: "bad request"}
 	}
 	if err != nil && err.Error() == "fabrik: note is empty" {
 		return &listen.APIError{Status: http.StatusBadRequest, Msg: "bad request"}
 	}
-	return doltstore.StoreErr(err)
+	return issuestore.StoreErr(err)
 }

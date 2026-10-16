@@ -15,51 +15,24 @@ type HistoryResult struct {
 	Versions []HistoryVersion `json:"versions"`
 }
 
+// History returns the current row for an issue (f-) or note (n-) id.
+// The SQLite issue store keeps no per-commit version history (that was
+// Dolt's dolt_history_* system tables); the shape stays compatible with
+// the `fabrik history` text/JSON output, with git log carrying the
+// cross-machine timeline (see VCLog).
 func (s *Store) History(ctx context.Context, id string) (HistoryResult, error) {
 	table, err := historyTable(id)
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	q := fmt.Sprintf(`SELECT * FROM dolt_history_%s WHERE id = ? ORDER BY commit_date ASC`, table)
-	rows, err := s.DB.QueryContext(ctx, q, id)
+	cur, err := s.historyCurrent(ctx, id, table)
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	defer rows.Close()
-	cols, err := rows.Columns()
-	if err != nil {
-		return HistoryResult{}, err
-	}
-	var versions []HistoryVersion
-	for rows.Next() {
-		vals := make([]interface{}, len(cols))
-		ptrs := make([]interface{}, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return HistoryResult{}, err
-		}
-		ver := HistoryVersion{}
-		for i, c := range cols {
-			ver[c] = scanHistoryVal(vals[i])
-		}
-		versions = append(versions, ver)
-	}
-	if err := rows.Err(); err != nil {
-		return HistoryResult{}, err
-	}
-	if len(versions) == 0 {
-		cur, err := s.historyFallback(ctx, id, table)
-		if err != nil {
-			return HistoryResult{}, err
-		}
-		versions = []HistoryVersion{cur}
-	}
-	return HistoryResult{ID: id, Table: table, Versions: versions}, nil
+	return HistoryResult{ID: id, Table: table, Versions: []HistoryVersion{cur}}, nil
 }
 
-func (s *Store) historyFallback(ctx context.Context, id, table string) (HistoryVersion, error) {
+func (s *Store) historyCurrent(ctx context.Context, id, table string) (HistoryVersion, error) {
 	if table == "issues" {
 		i, err := s.Get(ctx, id)
 		if err != nil {
@@ -72,7 +45,18 @@ func (s *Store) historyFallback(ctx context.Context, id, table string) (HistoryV
 			"id": i.ID, "title": i.Title, "status": i.Status, "priority": i.Priority,
 		}, nil
 	}
-	return nil, fmt.Errorf("fabrik: %s not found", id)
+	var n Note
+	err := s.DB.QueryRowContext(ctx, `SELECT id, issue_id, body, created_at FROM issue_notes WHERE id = ?`, id).
+		Scan(&n.ID, &n.IssueID, &n.Body, &n.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("fabrik: %s not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return HistoryVersion{
+		"id": n.ID, "issue_id": n.IssueID, "body": n.Body, "created_at": n.CreatedAt,
+	}, nil
 }
 
 func historyTable(id string) (string, error) {
@@ -89,8 +73,6 @@ func scanHistoryVal(v interface{}) interface{} {
 	switch x := v.(type) {
 	case []byte:
 		return string(x)
-	case nil:
-		return nil
 	default:
 		return x
 	}
@@ -102,6 +84,9 @@ func HistoryExists(ctx context.Context, db *sql.DB, id string) (bool, error) {
 		return false, err
 	}
 	var n int
-	err = db.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM dolt_history_%s WHERE id = ?`, table), id).Scan(&n)
-	return n > 0, err
+	q := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE id = ?`, table)
+	if err := db.QueryRowContext(ctx, q, id).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }

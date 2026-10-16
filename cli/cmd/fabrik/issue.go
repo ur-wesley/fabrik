@@ -12,6 +12,8 @@ import (
 	"github.com/ur-wesley/fabrik/cli/internal/clierr"
 	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
 	"github.com/ur-wesley/fabrik/cli/internal/export"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
+	"github.com/ur-wesley/fabrik/cli/internal/store"
 )
 
 var issueIDRe = regexp.MustCompile(`^f-[0-9a-f]{8,32}$`)
@@ -23,7 +25,7 @@ var validIssueStatuses = map[string]bool{
 func newIssueCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "issue",
-		Short: "Repo issue store (Dolt)",
+		Short: "Repo issue store (SQLite)",
 	}
 	root.AddCommand(newIssueListCmd())
 	root.AddCommand(newIssueReadyCmd())
@@ -44,16 +46,20 @@ func issueStoreErr(id string, err error) error {
 	return doltstore.StoreErr(err)
 }
 
-func publishIssueWrite(ctx context.Context, st *doltstore.Store, issueID string) error {
+func publishIssueWrite(ctx context.Context, st *issuestore.Store, issueID string) error {
 	return export.PublishAfterSave(ctx, st, issueID, "write")
 }
 
-func publishIssueNote(ctx context.Context, st *doltstore.Store, issueID string) error {
+func publishIssueNote(ctx context.Context, st *issuestore.Store, issueID string) error {
 	return export.PublishAfterSave(ctx, st, issueID, "note")
 }
 
-func openIssueStore(cmd *cobra.Command) (*doltstore.Store, error) {
-	return openRepoStore(cmd)
+func openIssueStore(cmd *cobra.Command) (*issuestore.Store, error) {
+	root, err := store.RequireRepo(repoStartDir())
+	if err != nil {
+		return nil, err
+	}
+	return issuestore.Open(cmd.Context(), root)
 }
 
 func newIssueListCmd() *cobra.Command {

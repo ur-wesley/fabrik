@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,9 +17,8 @@ import (
 )
 
 func TestIssueNote(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, dir)
 	t.Chdir(dir)
 
 	out, err := run(t, "issue", "create", "Note target", "--json")
@@ -48,11 +46,10 @@ func TestIssueNote(t *testing.T) {
 }
 
 func TestListenNoteHTTPNotifiesSSE(t *testing.T) {
-	skipWithoutCGO(t)
 	dir := t.TempDir()
 	abs, err := filepath.Abs(dir)
 	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Join(abs, ".fabrik", "dolt"), 0o755))
+	initIssueStore(t, abs)
 	t.Chdir(abs)
 
 	out, err := run(t, "issue", "create", "HTTP note", "--json")

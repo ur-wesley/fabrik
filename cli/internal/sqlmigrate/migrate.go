@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-//go:embed sql/memory/*.sql sql/graph/*.sql sql/dolt/*.sql
+//go:embed sql/memory/*.sql sql/graph/*.sql sql/issues/*.sql
 var embeddedFS embed.FS
 
 // MaxVersion is the highest migration version this binary knows for a store kind.

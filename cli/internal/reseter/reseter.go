@@ -474,6 +474,9 @@ func planFabrikStateInto(result *PlanResult, abs string) {
 			filepath.Join(fabrikDir, "graph.db"),
 			filepath.Join(fabrikDir, "graph.db-wal"),
 			filepath.Join(fabrikDir, "graph.db-shm"),
+			filepath.Join(fabrikDir, "issues.db"),
+			filepath.Join(fabrikDir, "issues.db-wal"),
+			filepath.Join(fabrikDir, "issues.db-shm"),
 		} {
 			if _, err := os.Stat(g); err == nil {
 				result.FilesToDelete = append(result.FilesToDelete, g)
@@ -814,6 +817,9 @@ var fabrikGitignoreLines = []string{
 	".fabrik/dolt/",
 	".fabrik/graph.db",
 	".fabrik/export/",
+	".fabrik/issues.db",
+	".fabrik/issues.db-wal",
+	".fabrik/issues.db-shm",
 }
 
 func stripOpencodeFabrikMCP(path string) error {

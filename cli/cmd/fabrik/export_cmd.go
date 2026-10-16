@@ -16,7 +16,7 @@ func newExportCmd() *cobra.Command {
 		Use:   "export",
 		Short: "Export issue JSONL snapshot",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, err := openRepoStore(cmd)
+			st, err := openIssueStore(cmd)
 			if err != nil {
 				return err
 			}

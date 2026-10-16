@@ -299,7 +299,7 @@ func Migrate(cfg Config, d Deps) error {
 			fmt.Fprintf(d.Out, "would import %s (%s -> %s)\n", it.Summary, it.From, it.To)
 			reported++
 			if it.Source == "beads" && plan.beadsDeps+plan.beadsNotes > 0 {
-				fmt.Fprintf(d.Out, "would import %d beads deps and %d beads notes (%s -> .fabrik/dolt)\n",
+				fmt.Fprintf(d.Out, "would import %d beads deps and %d beads notes (%s -> .fabrik/issues.db)\n",
 					plan.beadsDeps, plan.beadsNotes, plan.beadsFrom)
 				reported++
 			}

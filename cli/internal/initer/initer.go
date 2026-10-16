@@ -67,7 +67,10 @@ func (d *Deps) defaults() {
 }
 
 type initJSON struct {
-	Repo    string `json:"repo"`
+	Repo   string `json:"repo"`
+	Issues string `json:"issues"`
+	// Dolt is a deprecated alias of Issues (same value), kept so
+	// `fabrik init --json` consumers reading `dolt` keep working.
 	Dolt    string `json:"dolt"`
 	Graph   string `json:"graph"`
 	Created bool   `json:"created"`
@@ -119,12 +122,13 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 
 	var storeRes StoreResult
 	if cfg.DryRun {
-		fmt.Fprintf(out, "dry-run: open dolt %s\n", filepath.Join(abs, ".fabrik", "dolt"))
+		fmt.Fprintf(out, "dry-run: open issues %s\n", filepath.Join(abs, ".fabrik", "issues.db"))
 		fmt.Fprintf(out, "dry-run: open graph %s\n", filepath.Join(abs, ".fabrik", "graph.db"))
 		storeRes = StoreResult{
-			DoltPath:  filepath.Join(abs, ".fabrik", "dolt"),
-			GraphPath: filepath.Join(abs, ".fabrik", "graph.db"),
-			Created:   true,
+			IssuesPath: filepath.Join(abs, ".fabrik", "issues.db"),
+			DoltPath:   filepath.Join(abs, ".fabrik", "issues.db"),
+			GraphPath:  filepath.Join(abs, ".fabrik", "graph.db"),
+			Created:    true,
 		}
 	} else {
 		storeRes, err = d.InitStores(ctx, abs, d.Exec)
@@ -186,10 +190,10 @@ func Init(ctx context.Context, cfg Config, d Deps) error {
 
 	if cfg.JSON {
 		return json.NewEncoder(out).Encode(initJSON{
-			Repo: abs, Dolt: storeRes.DoltPath, Graph: storeRes.GraphPath, Created: storeRes.Created,
+			Repo: abs, Issues: storeRes.IssuesPath, Dolt: storeRes.IssuesPath, Graph: storeRes.GraphPath, Created: storeRes.Created,
 		})
 	}
-	fmt.Fprintf(out, "dolt %s\n", storeRes.DoltPath)
+	fmt.Fprintf(out, "issues %s\n", storeRes.IssuesPath)
 	fmt.Fprintf(out, "graph %s\n", storeRes.GraphPath)
 	return nil
 }

@@ -15,7 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ur-wesley/fabrik/cli/internal/doltstore"
+	"github.com/ur-wesley/fabrik/cli/internal/issuestore"
 	"github.com/ur-wesley/fabrik/cli/internal/tmpl"
 )
 
@@ -469,7 +469,7 @@ func TestPlanImportListsSources(t *testing.T) {
 	}
 	beads := bySource["beads"]
 	assert.Equal(t, ".beads/issues.jsonl", beads.From)
-	assert.Equal(t, ".fabrik/dolt", beads.To)
+	assert.Equal(t, ".fabrik/issues.db", beads.To)
 	assert.Equal(t, "2 beads issues", beads.Summary)
 	graph := bySource["graphify"]
 	assert.Equal(t, "graphify-out/graph.json", graph.From)
@@ -503,7 +503,7 @@ func TestImportDryRunTouchesNothing(t *testing.T) {
 	var out bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo, DryRun: true}, testDeps(&out)))
 	text := out.String()
-	assert.Contains(t, text, "would import 2 beads issues (.beads/issues.jsonl -> .fabrik/dolt)")
+	assert.Contains(t, text, "would import 2 beads issues (.beads/issues.jsonl -> .fabrik/issues.db)")
 	assert.Contains(t, text, "would import 2 nodes, 1 edges (graphify-out/graph.json -> .fabrik/graph.db)")
 	assert.Contains(t, text, "would import 2 engram observations, 1 session")
 	assert.NotContains(t, text, "would delete")
@@ -599,29 +599,7 @@ func TestImportGraphAndMemory(t *testing.T) {
 	assert.Len(t, queryStrings(t, memDB, `SELECT id FROM sessions`), 1)
 }
 
-func TestImportBeadsSkippedWithoutEngine(t *testing.T) {
-	if doltstore.HasCGO {
-		t.Skip("engine present: covered by TestImportBeadsToDolt")
-	}
-	memdir := isolateImportEnv(t)
-	repo := t.TempDir()
-	beadsBody := seedBeadsJSONL(t, repo)
-
-	var out bytes.Buffer
-	require.NoError(t, Migrate(Config{RepoPath: repo}, testDeps(&out)))
-	assert.Contains(t, out.String(), "dolt engine unavailable")
-	assert.Contains(t, out.String(), "found 2 issues")
-	assert.NoDirExists(t, filepath.Join(repo, ".fabrik", "dolt"))
-	assert.NoFileExists(t, filepath.Join(memdir, "memory.db"))
-	after, err := os.ReadFile(filepath.Join(repo, ".beads", "issues.jsonl"))
-	require.NoError(t, err)
-	assert.Equal(t, beadsBody, string(after))
-}
-
-func TestImportBeadsToDolt(t *testing.T) {
-	if !doltstore.HasCGO {
-		t.Skip("requires CGO_ENABLED=1 for the embedded Dolt engine")
-	}
+func TestImportBeadsToIssues(t *testing.T) {
 	isolateImportEnv(t)
 	repo := t.TempDir()
 	seed(t, repo, ".beads/issues.jsonl",
@@ -631,10 +609,10 @@ func TestImportBeadsToDolt(t *testing.T) {
 
 	var out bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo}, testDeps(&out)))
-	assert.Contains(t, out.String(), "imported 3 beads issues to .fabrik/dolt (0 already present)")
+	assert.Contains(t, out.String(), "imported 3 beads issues to .fabrik/issues.db (0 already present)")
 
 	ctx := context.Background()
-	st, err := doltstore.Open(ctx, repo)
+	st, err := issuestore.Open(ctx, repo)
 	require.NoError(t, err)
 	defer st.Close()
 	a, err := st.Get(ctx, beadsImportID("cli-a"))
@@ -657,13 +635,11 @@ func TestImportBeadsToDolt(t *testing.T) {
 	assert.Equal(t, "must work", c.Acceptance)
 	assert.Equal(t, 0, c.Priority)
 
-	// Release the exclusive Dolt lock before the second Migrate opens the
-	// same directory again (open_cgo.go gives up after 500ms).
 	require.NoError(t, st.Close())
 
 	var out2 bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo}, testDeps(&out2)))
-	assert.Contains(t, out2.String(), "imported 0 beads issues to .fabrik/dolt (3 already present)")
+	assert.Contains(t, out2.String(), "imported 0 beads issues to .fabrik/issues.db (3 already present)")
 
 	after, err := os.ReadFile(filepath.Join(repo, ".beads", "issues.jsonl"))
 	require.NoError(t, err)
@@ -825,10 +801,7 @@ func TestParseSessionSummary(t *testing.T) {
 
 // cli-hrq: Beads deps + notes land in issue_deps / issue_notes; a blocks edge
 // flips the open blocked issue to blocked; reruns are idempotent.
-func TestImportBeadsDepsNotesToDolt(t *testing.T) {
-	if !doltstore.HasCGO {
-		t.Skip("requires CGO_ENABLED=1 for the embedded Dolt engine")
-	}
+func TestImportBeadsDepsNotesToIssues(t *testing.T) {
 	isolateImportEnv(t)
 	repo := t.TempDir()
 	seed(t, repo, ".beads/issues.jsonl",
@@ -841,12 +814,12 @@ func TestImportBeadsDepsNotesToDolt(t *testing.T) {
 
 	var out bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo}, testDeps(&out)))
-	assert.Contains(t, out.String(), "imported 3 beads issues to .fabrik/dolt (0 already present)")
-	assert.Contains(t, out.String(), "imported 2 beads deps and 3 beads notes to .fabrik/dolt (0 already present)")
+	assert.Contains(t, out.String(), "imported 3 beads issues to .fabrik/issues.db (0 already present)")
+	assert.Contains(t, out.String(), "imported 2 beads deps and 3 beads notes to .fabrik/issues.db (0 already present)")
 	assert.Contains(t, out.String(), "outside the import set — skipped", "dangling cli-ghost edge is reported, not fatal")
 
 	ctx := context.Background()
-	st, err := doltstore.Open(ctx, repo)
+	st, err := issuestore.Open(ctx, repo)
 	require.NoError(t, err)
 	defer st.Close()
 
@@ -865,14 +838,12 @@ func TestImportBeadsDepsNotesToDolt(t *testing.T) {
 	require.Len(t, related.Notes, 1)
 	assert.Equal(t, "Close reason: Shipped", related.Notes[0].Body)
 
-	// Release the exclusive Dolt lock before the second Migrate opens the
-	// same directory again (open_cgo.go gives up after 500ms).
 	require.NoError(t, st.Close())
 
 	var out2 bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo}, testDeps(&out2)))
-	assert.Contains(t, out2.String(), "imported 0 beads issues to .fabrik/dolt (3 already present)")
-	assert.Contains(t, out2.String(), "imported 0 beads deps and 0 beads notes to .fabrik/dolt (5 already present)")
+	assert.Contains(t, out2.String(), "imported 0 beads issues to .fabrik/issues.db (3 already present)")
+	assert.Contains(t, out2.String(), "imported 0 beads deps and 0 beads notes to .fabrik/issues.db (5 already present)")
 }
 
 // cli-hrq: dry-run with deps/notes previews everything and creates nothing,
@@ -885,8 +856,8 @@ func TestImportDryRunBeadsDepsNotes(t *testing.T) {
 			`{"id":"cli-b","title":"B","status":"open"}`+"\n")
 	var out bytes.Buffer
 	require.NoError(t, Migrate(Config{RepoPath: repo, DryRun: true}, testDeps(&out)))
-	assert.Contains(t, out.String(), "would import 2 beads issues (.beads/issues.jsonl -> .fabrik/dolt)")
-	assert.Contains(t, out.String(), "would import 1 beads deps and 2 beads notes (.beads/issues.jsonl -> .fabrik/dolt)")
+	assert.Contains(t, out.String(), "would import 2 beads issues (.beads/issues.jsonl -> .fabrik/issues.db)")
+	assert.Contains(t, out.String(), "would import 1 beads deps and 2 beads notes (.beads/issues.jsonl -> .fabrik/issues.db)")
 	assert.NoDirExists(t, filepath.Join(repo, ".fabrik"))
 	assert.NoFileExists(t, filepath.Join(memdir, "memory.db"))
 }

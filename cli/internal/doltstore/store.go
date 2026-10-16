@@ -17,12 +17,8 @@ type Store struct {
 }
 
 func Open(ctx context.Context, repoRoot string) (*Store, error) {
-	db, err := openDB(ctx, store.DoltDir(repoRoot))
+	db, err := openDB(ctx, repoRoot)
 	if err != nil {
-		return nil, StoreErr(err)
-	}
-	if _, err := migrate(ctx, db); err != nil {
-		_ = db.Close()
 		return nil, StoreErr(err)
 	}
 	if err := checkMetaSchema(ctx, db); err != nil {
@@ -59,15 +55,26 @@ func checkMetaSchema(ctx context.Context, db *sql.DB) error {
 		}
 		return StoreErr(err)
 	}
-	max, err := sqlmigrate.MaxVersion("dolt")
+	max, err := sqlmigrate.MaxVersion("issues")
 	if err != nil {
 		return StoreErr(err)
 	}
 	have, _ := parseInt(val)
 	if have > max {
-		return &sqlmigrate.ErrSchemaNewer{Store: "dolt", Have: have, Binary: max}
+		return &sqlmigrate.ErrSchemaNewer{Store: "issues", Have: have, Binary: max}
 	}
 	return nil
+}
+
+func (s *Store) nextSeq(ctx context.Context) (int64, error) {
+	var n sql.NullInt64
+	if err := s.DB.QueryRowContext(ctx, `SELECT MAX(seq) FROM issue_notes`).Scan(&n); err != nil {
+		return 0, err
+	}
+	if !n.Valid {
+		return 1, nil
+	}
+	return n.Int64 + 1, nil
 }
 
 func parseInt(s string) (int, bool) {
@@ -320,7 +327,7 @@ func (s *Store) loadNotes(ctx context.Context, id string) ([]Note, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, body, created_at FROM issue_notes
 		WHERE issue_id = ?
-		ORDER BY created_at ASC, seq ASC
+		ORDER BY created_at ASC, COALESCE(seq, 9223372036854775807) ASC, rowid ASC
 	`, id)
 	if err != nil {
 		return nil, err
@@ -634,9 +641,13 @@ func (s *Store) CloseIssueBy(ctx context.Context, id, reason, by string, force b
 		if err != nil {
 			return CloseResult{}, err
 		}
+		seq, err := s.nextSeq(ctx)
+		if err != nil {
+			return CloseResult{}, err
+		}
 		_, err = s.DB.ExecContext(ctx, `
-			INSERT INTO issue_notes (id, issue_id, body, created_at) VALUES (?, ?, ?, ?)
-		`, noteID, id, reason, ts)
+			INSERT INTO issue_notes (id, issue_id, body, created_at, seq) VALUES (?, ?, ?, ?, ?)
+		`, noteID, id, reason, ts, seq)
 		if err != nil {
 			return CloseResult{}, err
 		}
@@ -796,9 +807,13 @@ func (s *Store) Note(ctx context.Context, issueID, body string) (Note, error) {
 		return Note{}, err
 	}
 	ts := nowRFC3339()
+	seq, err := s.nextSeq(ctx)
+	if err != nil {
+		return Note{}, err
+	}
 	_, err = s.DB.ExecContext(ctx, `
-		INSERT INTO issue_notes (id, issue_id, body, created_at) VALUES (?, ?, ?, ?)
-	`, id, issueID, body, ts)
+		INSERT INTO issue_notes (id, issue_id, body, created_at, seq) VALUES (?, ?, ?, ?, ?)
+	`, id, issueID, body, ts, seq)
 	if err != nil {
 		return Note{}, err
 	}

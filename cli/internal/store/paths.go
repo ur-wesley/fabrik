@@ -46,7 +46,7 @@ func RepoRoot(start string) (string, bool) {
 		return root, true
 	}
 	for {
-		if hasDolt(abs) {
+		if hasIssueStore(abs) {
 			return abs, true
 		}
 		parent := filepath.Dir(abs)
@@ -62,7 +62,12 @@ func GraphDBPath(repoRoot string) string {
 	return filepath.Join(repoRoot, ".fabrik", "graph.db")
 }
 
-// DoltDir returns .fabrik/dolt under repo root.
+// DoltDir returns .fabrik/dolt under repo root (legacy embedded-Dolt store).
 func DoltDir(repoRoot string) string {
 	return filepath.Join(repoRoot, ".fabrik", "dolt")
+}
+
+// IssuesDBPath returns .fabrik/issues.db under repo root (SQLite issue store).
+func IssuesDBPath(repoRoot string) string {
+	return filepath.Join(repoRoot, ".fabrik", "issues.db")
 }

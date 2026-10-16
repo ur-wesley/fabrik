@@ -11,7 +11,7 @@ func newMigrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Import Beads/Graphify/Engram into the Fabrik-native stack; optionally prune legacy dumps",
 		Long: `Import legacy state without deleting it: .beads/issues.jsonl (else bd list --all)
--> .fabrik/dolt, graphify-out/graph.json -> .fabrik/graph.db, Engram
+-> .fabrik/issues.db, graphify-out/graph.json -> .fabrik/graph.db, Engram
 observations (~/.engram/engram.db, FABRIK_ENGRAM_DB override) ->
 ~/.fabrik/memory.db (FABRIK_MEMORY_DIR override). Sources are never deleted,
 even with --prune. With --prune also delete legacy generated dump files
