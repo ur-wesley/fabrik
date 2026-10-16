@@ -36,7 +36,7 @@ description = "Run Rust GUI tests"
 run = "cd gui && cargo test"
 
 [tasks."cli:build-cgo"]
-description = "CGO build of the Go CLI into cli/fabrik (.exe on Windows); fails with a clear `gcc missing` error when no compiler is on PATH (issue store needs CGO_ENABLED=1; graph cmds are pure Go)"
+description = "Stripped CGO build of the Go CLI into cli/fabrik (.exe on Windows): -trimpath + -ldflags=\"-s -w\", prints binary size; fails with a clear `gcc missing` error when no compiler is on PATH (CGO optional now — issue store is pure Go, CGO_ENABLED=1 kept for callers)"
 run = "node scripts/build-cgo.mjs"
 
 [tasks."gui:run"]

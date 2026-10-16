@@ -1,11 +1,16 @@
-// CGO build of the Go CLI (embedded Dolt issue store needs gcc + CGO_ENABLED=1).
+// Stripped (CGO-capable) build of the Go CLI: -trimpath plus -ldflags="-s -w"
+// (drops DWARF/symtab, ~20-25% smaller). Prints the output binary size.
 // Usage: node scripts/build-cgo.mjs [--out <name>] [--check]
 //   --out <name>  output file name inside cli/ (default: fabrik.exe on Windows, fabrik elsewhere)
 //   --check       only verify gcc is present (prints version), no build.
-// Fails fast with a clear `gcc missing` error when no compiler is on PATH.
-// Graph commands are pure Go (modernc.org/sqlite) and work without gcc;
-// issue commands use the embedded Dolt engine (dolthub/driver) and need this build.
+// CGO is optional now: the issue store is pure Go (modernc.org/sqlite,
+// HasCGO=false) and builds fine with CGO_ENABLED=0 and no gcc. This script
+// keeps the CGO_ENABLED=1 default so existing `mise run cli:build-cgo`
+// callers keep working; it fails fast with a clear `gcc missing` error when
+// no compiler is on PATH (pure-Go fallback: CGO_ENABLED=0 go build
+// -trimpath -ldflags="-s -w" -o <out> ./cmd/fabrik).
 import { spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,12 +41,14 @@ function main() {
   const version = gccVersion();
   if (!version) {
     fail(
-      "gcc missing: the issue store needs a CGO build (embedded Dolt requires CGO_ENABLED=1).\n" +
-        "  Install a C toolchain with ICU and re-run:\n" +
+      "gcc missing: this script builds with CGO_ENABLED=1, which needs a C toolchain with ICU.\n" +
+        "  The CLI itself is pure Go now (modernc.org/sqlite, no CGO required), so either\n" +
+        "  install a toolchain and re-run, or build without CGO:\n" +
+        "    CGO_ENABLED=0 go build -trimpath -ldflags=\"-s -w\" -o <out> ./cmd/fabrik\n" +
+        "  Toolchain install:\n" +
         "    Windows: MSYS2 with toolchain + ICU (same as CI releases):\n" +
         "               pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-icu\n" +
         "             then put C:\\msys64\\mingw64\\bin on PATH\n" +
-        "             (a plain WinLibs gcc lacks ICU headers and cannot link the Dolt engine)\n" +
         "    Linux:   sudo apt-get install -y build-essential libicu-dev\n" +
         "    macOS:   brew install icu4c",
     );
@@ -51,16 +58,29 @@ function main() {
     return;
   }
 
-  console.log(`build-cgo: ${version} — CGO_ENABLED=1 go build -trimpath -o ${outName} ./cmd/fabrik`);
-  const r = spawnSync("go", ["build", "-trimpath", "-o", outName, "./cmd/fabrik"], {
-    cwd: CLI_DIR,
-    stdio: "inherit",
-    env: { ...process.env, CGO_ENABLED: "1" },
-  });
+  console.log(
+    `build-cgo: ${version} — CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o ${outName} ./cmd/fabrik`,
+  );
+  const r = spawnSync(
+    "go",
+    ["build", "-trimpath", "-ldflags", "-s -w", "-o", outName, "./cmd/fabrik"],
+    {
+      cwd: CLI_DIR,
+      stdio: "inherit",
+      env: { ...process.env, CGO_ENABLED: "1" },
+    },
+  );
   if (r.error || r.status !== 0) {
     fail(`go build failed (exit ${r.status ?? r.error})`);
   }
-  console.log(`build-cgo: wrote cli/${outName}`);
+  try {
+    const bytes = statSync(path.join(CLI_DIR, outName)).size;
+    console.log(
+      `build-cgo: wrote cli/${outName} (${bytes} bytes, ${(bytes / 1048576).toFixed(1)} MiB, stripped -s -w)`,
+    );
+  } catch {
+    console.log(`build-cgo: wrote cli/${outName}`);
+  }
 }
 
 main();
