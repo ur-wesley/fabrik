@@ -1,7 +1,7 @@
 # Release the fabrik Go CLI as binaries + npm/bun packages (no postinstall).
 #
 # Trigger: push a tag like v1.0.0 (must match package.json + cli/package.json + cli/internal/version/package.json + gui/Cargo.toml + gui/Cargo.lock (neon) + npm/*/package.json).
-# Builds 5 targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
+# Builds 4 targets: win32-x64, linux-x64, linux-arm64, darwin-arm64.
 # Version is stamped from package.json via ldflags.
 #
 # Install options after release:
@@ -28,7 +28,6 @@ jobs:
           - { runner: windows-latest, goos: windows, goarch: amd64, ext: .exe, suffix: windows-amd64, npmDir: fabrik-win32-x64, npmBin: fabrik.exe }
           - { runner: ubuntu-latest, goos: linux, goarch: amd64, ext: "", suffix: linux-amd64, npmDir: fabrik-linux-x64, npmBin: fabrik }
           - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64, ext: "", suffix: linux-arm64, npmDir: fabrik-linux-arm64, npmBin: fabrik }
-          - { runner: macos-13, goos: darwin, goarch: amd64, ext: "", suffix: darwin-amd64, npmDir: fabrik-darwin-x64, npmBin: fabrik }
           - { runner: macos-14, goos: darwin, goarch: arm64, ext: "", suffix: darwin-arm64, npmDir: fabrik-darwin-arm64, npmBin: fabrik }
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -107,7 +106,7 @@ jobs:
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: |
           go build -trimpath \
-            -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
+            -ldflags "-s -w -X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
             -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
           if command -v sha256sum >/dev/null 2>&1; then sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; else shasum -a 256 "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; fi
           mkdir -p "../npm/${{ matrix.npmDir }}/bin"
@@ -126,7 +125,7 @@ jobs:
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/icu4c/lib -L/usr/local/opt/icu4c/lib' || '' }}
         run: |
           go build -trimpath \
-            -ldflags "-X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
+            -ldflags "-s -w -X github.com/ur-wesley/fabrik/cli/internal/version.Version=${{ steps.version.outputs.version }}" \
             -o "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" ./cmd/fabrik
           if command -v sha256sum >/dev/null 2>&1; then sha256sum "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; else shasum -a 256 "fabrik-${{ matrix.suffix }}${{ matrix.ext }}" > "fabrik-${{ matrix.suffix }}${{ matrix.ext }}.sha256"; fi
           mkdir -p "../npm/${{ matrix.npmDir }}/bin"
@@ -181,13 +180,12 @@ jobs:
       - name: stage npm binaries
         run: |
           node scripts/sync-versions.mjs --check
-          mkdir -p npm/fabrik-win32-x64/bin npm/fabrik-linux-x64/bin npm/fabrik-linux-arm64/bin npm/fabrik-darwin-x64/bin npm/fabrik-darwin-arm64/bin
+          mkdir -p npm/fabrik-win32-x64/bin npm/fabrik-linux-x64/bin npm/fabrik-linux-arm64/bin npm/fabrik-darwin-arm64/bin
           cp dist/fabrik-windows-amd64.exe npm/fabrik-win32-x64/bin/fabrik.exe
           cp dist/fabrik-linux-amd64 npm/fabrik-linux-x64/bin/fabrik
           cp dist/fabrik-linux-arm64 npm/fabrik-linux-arm64/bin/fabrik
-          cp dist/fabrik-darwin-amd64 npm/fabrik-darwin-x64/bin/fabrik
           cp dist/fabrik-darwin-arm64 npm/fabrik-darwin-arm64/bin/fabrik
-          chmod +x npm/fabrik-linux-x64/bin/fabrik npm/fabrik-linux-arm64/bin/fabrik npm/fabrik-darwin-x64/bin/fabrik npm/fabrik-darwin-arm64/bin/fabrik
+          chmod +x npm/fabrik-linux-x64/bin/fabrik npm/fabrik-linux-arm64/bin/fabrik npm/fabrik-darwin-arm64/bin/fabrik
           ls -R npm
 
       - name: publish platform packages
@@ -195,7 +193,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for pkg in fabrik-win32-x64 fabrik-linux-x64 fabrik-linux-arm64 fabrik-darwin-x64 fabrik-darwin-arm64; do
+          for pkg in fabrik-win32-x64 fabrik-linux-x64 fabrik-linux-arm64 fabrik-darwin-arm64; do
             echo "== publishing @ur-wesley/$pkg =="
             npm publish ./npm/$pkg --provenance --access public
           done

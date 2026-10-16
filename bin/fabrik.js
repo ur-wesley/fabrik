@@ -11,9 +11,9 @@ const path = require("node:path");
 const PKG_SCOPE = "@ur-wesley";
 
 function npmTarget(platform, arch) {
-  // Node naming: win32/x64, darwin/x64+arm64, linux/x64+arm64
+  // Node naming: win32/x64, darwin/arm64, linux/x64+arm64 (darwin/x64 Intel Mac unsupported)
   if (platform === "win32" && arch === "x64") return "win32-x64";
-  if (platform === "darwin" && arch === "x64") return "darwin-x64";
+  if (platform === "darwin" && arch === "x64") return null; // Intel Mac unsupported
   if (platform === "darwin" && arch === "arm64") return "darwin-arm64";
   if (platform === "linux" && arch === "x64") return "linux-x64";
   if (platform === "linux" && arch === "arm64") return "linux-arm64";
@@ -49,7 +49,7 @@ function main() {
   const target = npmTarget(process.platform, process.arch);
   if (!target) {
     console.error(
-      `fabrik: unsupported platform ${process.platform}/${process.arch}. Supported: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.`
+      `fabrik: unsupported platform ${process.platform}/${process.arch}. Supported: win32-x64, linux-x64, linux-arm64, darwin-arm64.`
     );
     process.exit(1);
   }

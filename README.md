@@ -17,7 +17,7 @@ No postinstall script — `npm`/`bun` install the prebuilt binary for your
 platform via `optionalDependencies` (`fabrik` on `PATH` comes from `bin/fabrik.js`).
 
 Or download `fabrik-windows-amd64.exe` / `fabrik-linux-amd64` / `fabrik-linux-arm64` /
-`fabrik-darwin-amd64` / `fabrik-darwin-arm64` from the GitHub release.
+`fabrik-darwin-arm64` from the GitHub release.
 Version lives in `package.json` (mirrored to `cli/package.json` + `npm/*/package.json`
 via `npm run versions:sync`); releases are tagged `v<version>`.
 
@@ -29,7 +29,7 @@ fabrik update-deps --deps install/deps.json  # refresh pins from GitHub/PyPI
 fabrik version
 ```
 
-Dev: `cd cli && go test ./...`. Release targets: win32-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64.
+Dev: `cd cli && go test ./...`. Release targets: win32-x64, linux-x64, linux-arm64, darwin-arm64.
 
 ## Per repo (Go CLI)
 

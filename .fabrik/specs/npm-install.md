@@ -23,7 +23,7 @@ install. Never use a `curl|sh` postinstall download as the primary lane.
   bun `trustedDependencies` is consumer-side only and not a mechanism we can rely on.
 - Delta since recon (already landed, commit `2839d02` + follow-ups — this spec
   ratifies + hardens, see Phase 2): root `bin/fabrik.js` shim,
-  `npm/fabrik-{win32-x64,linux-x64,linux-arm64,darwin-x64,darwin-arm64}/`,
+  `npm/fabrik-{win32-x64,linux-x64,linux-arm64,darwin-arm64}/`,
   `optionalDependencies`, `.github/workflows/release-cli.yml` build+publish,
   `scripts/sync-versions.mjs` with lifecycle-script guard, README quick-start.
 
@@ -82,7 +82,7 @@ install. Never use a `curl|sh` postinstall download as the primary lane.
 
 ## Phase 2 — Go binary via shim + optionalDependencies (in scope, mostly built)
 1. **Shim (`bin/fabrik.js`, landed — ratify).** Map
-   `process.platform/arch` → `win32-x64 | linux-x64 | linux-arm64 | darwin-x64 |
+   `process.platform/arch` → `win32-x64 | linux-x64 | linux-arm64 |
    darwin-arm64`; binary name `fabrik.exe` on win32 else `fabrik`. Lookup order:
    `$FABRIK_BINARY` override → repo checkout (`npm/fabrik-<t>/bin/`,
    `cli/fabrik[.exe]` local build) → installed sibling
@@ -90,16 +90,16 @@ install. Never use a `curl|sh` postinstall download as the primary lane.
    (`@ur-wesley/fabrik-<t>/bin/...`, pnpm-safe). `spawnSync` with
    `stdio: inherit`. Unsupported platform and missing-binary errors name the
    expected `optionalDependency` and the `--no-optional` pitfall; exit nonzero.
-2. **optionalDependencies (landed — ratify).** Five entries
+2. **optionalDependencies (landed — ratify).** Four entries
    `@ur-wesley/fabrik-<target>` pinned to the exact root version
    (`sync-versions.mjs` enforces). Platform packages carry `os` + `cpu` so npm
    skips non-matching targets (bun honors `os`/`cpu` too); only the host binary
    downloads.
 3. **CI publish matrix (landed — ratify + harden).**
-   `.github/workflows/release-cli.yml`: on tag `v*`, build 5 Go targets
+   `.github/workflows/release-cli.yml`: on tag `v*`, build 4 Go targets
    (`CGO_ENABLED=0`, `-trimpath`, `-ldflags ...Version=<version>`), `sha256`,
    `go test ./...` gate, tag-vs-`package.json` gate (`sync-versions.mjs --check`),
-   stage binaries into `npm/*/bin`, `chmod +x`, publish the 5 platform packages
+   stage binaries into `npm/*/bin`, `chmod +x`, publish the 4 platform packages
    then the wrapper with `--provenance --access public` (OIDC trusted publishing,
    `NPM_TOKEN` fallback). Remaining hardening: switch the `version` step to the
    Phase-1 bun-safe reader; add `publishConfig` to platform packages.
@@ -128,7 +128,7 @@ runner, plus the `get-version` acceptance in Phase 1 §6.
 ## Open questions (for APPROVE)
 1. Ratify-vs-build: Phase 2 is ~90% landed — approve this spec as ratify+harden, or want deltas split into separate Beads issues?
 2. Version reader: new `scripts/get-version.mjs` file, or `--print-version` flag on `sync-versions.mjs`? (Recommend flag — one fewer file.)
-3. Add `publishConfig.access=public` (+ `LICENSE` to `files`) on the 5 platform packages now, or rely on CLI `--access public`?
+3. Add `publishConfig.access=public` (+ `LICENSE` to `files`) on the 4 platform packages now, or rely on CLI `--access public`?
 4. `cli:version` / `cli:build` npm scripts: keep as node-invoked helpers or rewrite bun-first (`bun scripts/...`)? AGENTS.md quality gates call `go` directly, so risk is low either way.
 5. Test runners: is linux-x64 + win32-x64 CI enough, or must darwin-arm64 be in-matrix before publish?
 6. `npx`/`bunx` canonical form: document `npx -p @ur-wesley/fabrik fabrik ...` (bin name `fabrik` ≠ package short name) — confirm no package rename intended.

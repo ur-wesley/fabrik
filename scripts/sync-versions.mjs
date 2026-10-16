@@ -20,7 +20,6 @@ const PLATFORMS = [
   "fabrik-win32-x64",
   "fabrik-linux-x64",
   "fabrik-linux-arm64",
-  "fabrik-darwin-x64",
   "fabrik-darwin-arm64",
 ];
 

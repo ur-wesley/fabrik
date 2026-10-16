@@ -30,16 +30,17 @@ func TestAssetName(t *testing.T) {
 		{"windows_amd64", "fabrik-windows-amd64.exe"},
 		{"linux_amd64", "fabrik-linux-amd64"},
 		{"linux_arm64", "fabrik-linux-arm64"},
-		{"darwin_amd64", "fabrik-darwin-amd64"},
 		{"darwin_arm64", "fabrik-darwin-arm64"},
 	} {
 		got, err := assetName(tc[0])
 		require.NoError(t, err)
 		assert.Equal(t, tc[1], got)
 	}
-	_, err := assetName("windows_arm64")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go install")
+	for _, unsupported := range []string{"windows_arm64", "darwin_amd64"} {
+		_, err := assetName(unsupported)
+		require.Error(t, err, unsupported)
+		assert.Contains(t, err.Error(), "go install")
+	}
 }
 
 // stubRelease serves a fake GitHub API + asset endpoints.

@@ -1,9 +1,10 @@
 // Package platform maps runtime OS/arch to deps.json asset keys and release
 // asset names. It is the single source of truth for platform variants:
-// keySuffix holds all 6 supported keys, ReleaseTargets the 5 fabrik binaries
+// keySuffix holds all 6 supported keys, ReleaseTargets the 4 fabrik binaries
 // the release workflow builds (see .github/workflows/release-cli.yml matrix;
-// windows_arm64 is a documented exclusion — no Windows/arm64 runner — not
-// drift), and the asset-name helpers keep selfupdate and updatedeps from
+// windows_arm64 is a documented exclusion — no Windows/arm64 runner — and
+// darwin_amd64 is unsupported — no Intel-Mac builds — not drift), and the
+// asset-name helpers keep selfupdate and updatedeps from
 // re-implementing the mapping.
 package platform
 
@@ -15,7 +16,7 @@ import (
 
 // keySuffix maps every supported platform key to its release asset suffix.
 // It backs Key (all 6 resolve — third-party dep archives ship all 6),
-// ReleaseTargets (the 5 fabrik binaries we build) and both asset-name
+// ReleaseTargets (the 4 fabrik binaries we build) and both asset-name
 // helpers below.
 var keySuffix = map[string]string{
 	"windows_amd64": "windows-amd64",
@@ -30,15 +31,16 @@ var keySuffix = map[string]string{
 // Third-party dep assets may still cover these keys.
 var noFabrikBinary = map[string]bool{
 	"windows_arm64": true,
+	"darwin_amd64":  true, // Intel Mac unsupported — no darwin-amd64 builds
 }
 
 // AllKeys lists every supported platform key, sorted for determinism.
 var AllKeys = []string{"darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64", "windows_amd64", "windows_arm64"}
 
 // ReleaseTargets are the only OS/arch combos we ship fabrik binaries for:
-// windows_amd64, linux_amd64, linux_arm64, darwin_amd64, darwin_arm64
+// windows_amd64, linux_amd64, linux_arm64, darwin_arm64
 // (see .github/workflows/release-cli.yml matrix).
-var ReleaseTargets = []string{"windows_amd64", "linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"}
+var ReleaseTargets = []string{"windows_amd64", "linux_amd64", "linux_arm64", "darwin_arm64"}
 
 // Key returns the deps.json asset key (e.g. "windows_amd64") for the given
 // GOOS/GOARCH pair. All six supported combos resolve (third-party dep assets
@@ -88,7 +90,7 @@ func DepAssetName(tool, ver, key string) string {
 }
 
 // SelfUpdateAssetName maps a platform key to the fabrik release asset name.
-// Keys with no fabrik binary (windows_arm64) error with the go-install
+// Keys with no fabrik binary (windows_arm64, darwin_amd64) error with the go-install
 // fallback hint.
 func SelfUpdateAssetName(key string) (string, error) {
 	s, ok := keySuffix[key]

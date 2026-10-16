@@ -38,13 +38,13 @@ func TestBinaryName(t *testing.T) {
 }
 
 func TestReleaseTargets(t *testing.T) {
-	assert.Len(t, ReleaseTargets, 5)
+	assert.Len(t, ReleaseTargets, 4)
 	assert.True(t, IsReleaseTarget("windows_amd64"))
 	assert.True(t, IsReleaseTarget("linux_amd64"))
 	assert.True(t, IsReleaseTarget("linux_arm64"))
-	assert.True(t, IsReleaseTarget("darwin_amd64"))
 	assert.True(t, IsReleaseTarget("darwin_arm64"))
 	assert.False(t, IsReleaseTarget("windows_arm64"))
+	assert.False(t, IsReleaseTarget("darwin_amd64"))
 }
 
 func TestCurrentResolves(t *testing.T) {
@@ -54,12 +54,13 @@ func TestCurrentResolves(t *testing.T) {
 }
 
 // cli-4ag/cli-699: single table parity — AllKeys holds all 6 supported
-// variants, ReleaseTargets the 5 fabrik binaries the release workflow builds
-// (windows_arm64 is the documented exclusion), every target resolves via
+// variants, ReleaseTargets the 4 fabrik binaries the release workflow builds
+// (windows_arm64 is the documented exclusion — no Windows/arm64 runner —
+// and darwin_amd64 is unsupported — no Intel-Mac builds), every target resolves via
 // Key, and both asset-name helpers agree on the suffixes.
 func TestPlatformTableParity(t *testing.T) {
 	assert.Len(t, AllKeys, 6)
-	assert.Len(t, ReleaseTargets, 5)
+	assert.Len(t, ReleaseTargets, 4)
 	for _, k := range ReleaseTargets {
 		assert.Contains(t, AllKeys, k)
 		goos, goarch, ok := splitKey(k)
@@ -68,13 +69,20 @@ func TestPlatformTableParity(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, k, got)
 	}
-	// documented exclusion: resolves via Key (dep assets cover it) but has
-	// no fabrik binary and is not a release target.
+	// documented exclusions: resolve via Key (dep assets cover them) but have
+	// no fabrik binary and are not release targets.
 	got, err := Key("windows", "arm64")
 	require.NoError(t, err)
 	assert.Equal(t, "windows_arm64", got)
 	assert.False(t, IsReleaseTarget("windows_arm64"))
 	_, err = SelfUpdateAssetName("windows_arm64")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go install")
+	got, err = Key("darwin", "amd64")
+	require.NoError(t, err)
+	assert.Equal(t, "darwin_amd64", got)
+	assert.False(t, IsReleaseTarget("darwin_amd64"))
+	_, err = SelfUpdateAssetName("darwin_amd64")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "go install")
 }
@@ -100,9 +108,9 @@ func TestCanonicalAssetNames(t *testing.T) {
 		} else {
 			assert.Equal(t, "beads_1.4.0_"+k+".tar.gz", dep)
 		}
-		// fabrik binaries: fabrik-<suffix>[.exe], except the exclusion
+		// fabrik binaries: fabrik-<suffix>[.exe], except the exclusions
 		name, err := SelfUpdateAssetName(k)
-		if k == "windows_arm64" {
+		if k == "windows_arm64" || k == "darwin_amd64" {
 			require.Error(t, err)
 			continue
 		}
