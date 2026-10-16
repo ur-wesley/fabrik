@@ -16,10 +16,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@ur-wesley/fabrik-win32-x64": "2.0.0",
-    "@ur-wesley/fabrik-linux-x64": "2.0.0",
-    "@ur-wesley/fabrik-linux-arm64": "2.0.0",
-    "@ur-wesley/fabrik-darwin-arm64": "2.0.0"
+    "@ur-wesley/fabrik-win32-x64": "2.1.0",
+    "@ur-wesley/fabrik-linux-x64": "2.1.0",
+    "@ur-wesley/fabrik-linux-arm64": "2.1.0",
+    "@ur-wesley/fabrik-darwin-arm64": "2.1.0"
   },
   "publishConfig": {
     "access": "public"
